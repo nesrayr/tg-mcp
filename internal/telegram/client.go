@@ -22,17 +22,20 @@ type ClientOptions struct {
 	SessionFile string
 	Policy      Policy
 	AppVersion  string
+	// UpdateHandler is needed only for QR login: Telegram reports the code scan
+	// with an updateLoginToken update. If nil, updates are disabled.
+	UpdateHandler telegram.UpdateHandler
 }
 
 // NewClient creates a gotd client in which every request goes through Guard.
 //
-// Updates are disabled: the server keeps no persistent event stream and does not
-// call updates.getState, so to Telegram it looks like a regular
-// inactive client.
+// Without an UpdateHandler updates are disabled: the client keeps no event stream and does not
+// call updates.getState, so to Telegram it looks inactive.
 func NewClient(opts ClientOptions) *telegram.Client {
 	return telegram.NewClient(opts.APIID, opts.APIHash, telegram.Options{
 		SessionStorage: &session.FileStorage{Path: opts.SessionFile},
-		NoUpdates:      true,
+		NoUpdates:      opts.UpdateHandler == nil,
+		UpdateHandler:  opts.UpdateHandler,
 		Middlewares: []telegram.Middleware{
 			Guard(opts.Policy),
 			FloodWait(maxFloodWait, maxFloodRetry, SleepContext),

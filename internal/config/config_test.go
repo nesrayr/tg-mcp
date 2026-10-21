@@ -147,6 +147,45 @@ func Test_Config_Validate(t *testing.T) {
 	}
 }
 
+func Test_Config_Allow(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{AllowedChats: []string{"@Durov", "42"}}
+
+	added, err := cfg.Allow(domain.ChatRef{Username: "durov"}, domain.ChatRef{ID: -1001}, domain.ChatRef{ID: -1001})
+	require.NoError(t, err)
+	require.Equal(t, 1, added)
+	require.Equal(t, []string{"@Durov", "42", "-1001"}, cfg.AllowedChats)
+}
+
+func Test_Config_Deny(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		allowed     []string
+		deny        []domain.ChatRef
+		wantRemoved int
+		want        []string
+	}{
+		{name: "removes by normalized ref", allowed: []string{"@Durov", "42", "-1001"}, deny: []domain.ChatRef{{Username: "durov"}, {ID: -1001}}, wantRemoved: 2, want: []string{"42"}},
+		{name: "unknown ref keeps list", allowed: []string{"42"}, deny: []domain.ChatRef{{ID: 7}}, want: []string{"42"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{AllowedChats: tt.allowed}
+
+			removed, err := cfg.Deny(tt.deny...)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantRemoved, removed)
+			require.Equal(t, tt.want, cfg.AllowedChats)
+		})
+	}
+}
+
 func Test_Config_ChatRefs(t *testing.T) {
 	t.Parallel()
 

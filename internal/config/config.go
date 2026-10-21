@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 
 	"github.com/nesrayr/tg-mcp/internal/domain"
 )
@@ -68,14 +69,30 @@ func DefaultPaths() (Paths, error) {
 // Load reads and validates the config. It refuses to work if the directory or file
 // is accessible to anyone other than the owner.
 func Load(paths Paths) (Config, error) {
-	if err := checkPrivate(paths.ConfigDir); err != nil {
+	if err := CheckPrivate(paths.ConfigDir); err != nil {
 		return Config{}, err
 	}
-	if err := checkPrivate(paths.ConfigFile); err != nil {
+	if err := CheckPrivate(paths.ConfigFile); err != nil {
 		return Config{}, err
 	}
 
+	cfg, err := Read(paths)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// Read reads the config without permission checks or validation. setup needs it to keep
+// allowed_chats when overwriting the keys, even if the old config is invalid.
+func Read(paths Paths) (Config, error) {
 	data, err := os.ReadFile(paths.ConfigFile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Config{}, ErrNotConfigured
+	}
 	if err != nil {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
@@ -83,9 +100,6 @@ func Load(paths Paths) (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("%w: parse %s: %v", ErrInvalidConfig, paths.ConfigFile, err)
-	}
-	if err := cfg.Validate(); err != nil {
-		return Config{}, err
 	}
 	return cfg, nil
 }
@@ -133,6 +147,43 @@ func (c Config) ChatRefs() ([]domain.ChatRef, error) {
 	return refs, nil
 }
 
+// Allow adds chats to the allowlist, skipping those already present. Returns the number of new ones.
+func (c *Config) Allow(refs ...domain.ChatRef) (int, error) {
+	current, err := c.ChatRefs()
+	if err != nil {
+		return 0, err
+	}
+
+	added := 0
+	for _, ref := range refs {
+		if slices.Contains(current, ref) {
+			continue
+		}
+		current = append(current, ref)
+		c.AllowedChats = append(c.AllowedChats, ref.String())
+		added++
+	}
+	return added, nil
+}
+
+// Deny removes chats from the allowlist. Returns the number of removed ones.
+func (c *Config) Deny(refs ...domain.ChatRef) (int, error) {
+	current, err := c.ChatRefs()
+	if err != nil {
+		return 0, err
+	}
+
+	kept := make([]string, 0, len(current))
+	for i, ref := range current {
+		if !slices.Contains(refs, ref) {
+			kept = append(kept, c.AllowedChats[i])
+		}
+	}
+	removed := len(c.AllowedChats) - len(kept)
+	c.AllowedChats = kept
+	return removed, nil
+}
+
 // EnsurePrivateDir creates a directory with mode 0700 and fixes the mode of an existing one.
 func EnsurePrivateDir(dir string) error {
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
@@ -144,7 +195,8 @@ func EnsurePrivateDir(dir string) error {
 	return nil
 }
 
-func checkPrivate(path string) error {
+// CheckPrivate checks that a file or directory is accessible only by its owner.
+func CheckPrivate(path string) error {
 	info, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return ErrNotConfigured

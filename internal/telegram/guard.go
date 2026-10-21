@@ -102,6 +102,17 @@ var ReadOnlyPolicy = NewPolicy(
 	&tg.AuthExportAuthorizationRequest{},
 )
 
+// LoginPolicy is used only by the login command: it adds login methods to the read methods
+// for QR code and Telegram code login with a 2FA password. Signing up a new account is not allowed.
+var LoginPolicy = ReadOnlyPolicy.With(
+	&tg.AuthExportLoginTokenRequest{},
+	&tg.AuthImportLoginTokenRequest{},
+	&tg.AuthSendCodeRequest{},
+	&tg.AuthSignInRequest{},
+	&tg.AccountGetPasswordRequest{},
+	&tg.AuthCheckPasswordRequest{},
+)
+
 // Guard is a middleware that rejects every request outside the policy before it reaches the network.
 func Guard(policy Policy) telegram.Middleware {
 	return telegram.MiddlewareFunc(func(next tg.Invoker) telegram.InvokeFunc {

@@ -34,6 +34,31 @@ func Test_ReadOnlyPolicy_Methods(t *testing.T) {
 	}, ReadOnlyPolicy.Methods())
 }
 
+func Test_LoginPolicy_Methods(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, []string{
+		"account.getPassword",
+		"auth.checkPassword",
+		"auth.exportAuthorization",
+		"auth.exportLoginToken",
+		"auth.importLoginToken",
+		"auth.sendCode",
+		"auth.signIn",
+		"channels.getMessages",
+		"contacts.resolveUsername",
+		"messages.getDialogs",
+		"messages.getHistory",
+		"messages.getMessages",
+		"messages.getPeerDialogs",
+		"messages.search",
+		"upload.getFile",
+		"users.getUsers",
+	}, LoginPolicy.Methods())
+	require.False(t, LoginPolicy.Allows(&tg.AuthSignUpRequest{}))
+	require.False(t, ReadOnlyPolicy.Allows(&tg.AuthSendCodeRequest{}))
+}
+
 func Test_Guard_BlocksWriteMethods(t *testing.T) {
 	t.Parallel()
 
