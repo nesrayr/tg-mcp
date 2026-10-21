@@ -34,10 +34,12 @@ const (
 
 // Media describes an attachment. Downloadable means the attachment can be fetched
 // through the server: currently only photos, images and PDFs within the size limit.
+// Description is set for other attachments (geo, poll, contact…).
 type Media struct {
 	Kind         MediaKind
 	FileName     string
 	MimeType     string
 	Size         int64
 	Downloadable bool
+	Description  string
 }
