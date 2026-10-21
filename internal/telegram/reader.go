@@ -202,31 +202,33 @@ func (r *Reader) Search(ctx context.Context, params SearchParams) ([]domain.Mess
 
 // DownloadMedia writes a message attachment to w. Only photos, images
 // and PDFs up to MaxMediaSize are downloaded; exceeding the limit mid-download returns ErrMediaTooLarge.
-func (r *Reader) DownloadMedia(ctx context.Context, ref domain.ChatRef, messageID int, w io.Writer) (domain.Media, error) {
+func (r *Reader) DownloadMedia(ctx context.Context, ref domain.ChatRef, messageID int, w io.Writer) (domain.Attachment, error) {
 	chat, err := r.directory.Resolve(ctx, ref)
 	if err != nil {
-		return domain.Media{}, err
+		return domain.Attachment{}, err
 	}
+	attachment := domain.Attachment{ChatID: chat.chat.ID, MessageID: messageID}
 
 	msg, err := r.message(ctx, chat, messageID)
 	if err != nil {
-		return domain.Media{}, err
+		return attachment, err
 	}
 
 	media := classifyMedia(msg.Media, r.opts.MaxMediaSize)
 	if media == nil {
-		return domain.Media{}, fmt.Errorf("%w: message has no media", ErrMediaNotDownloadable)
+		return attachment, fmt.Errorf("%w: message has no media", ErrMediaNotDownloadable)
 	}
+	attachment.Media = *media
 	if !media.Downloadable {
 		if isDownloadableKind(media.Kind) && media.Size > r.opts.MaxMediaSize {
-			return *media, fmt.Errorf("%w: %d bytes, limit %d", ErrMediaTooLarge, media.Size, r.opts.MaxMediaSize)
+			return attachment, fmt.Errorf("%w: %d bytes, limit %d", ErrMediaTooLarge, media.Size, r.opts.MaxMediaSize)
 		}
-		return *media, fmt.Errorf("%w: %s", ErrMediaNotDownloadable, media.Kind)
+		return attachment, fmt.Errorf("%w: %s", ErrMediaNotDownloadable, media.Kind)
 	}
 
 	location, ok := fileLocation(msg.Media)
 	if !ok {
-		return *media, fmt.Errorf("%w: no file location", ErrMediaNotDownloadable)
+		return attachment, fmt.Errorf("%w: no file location", ErrMediaNotDownloadable)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, r.opts.DownloadTimeout)
@@ -234,9 +236,9 @@ func (r *Reader) DownloadMedia(ctx context.Context, ref domain.ChatRef, messageI
 
 	limited := &limitedWriter{w: w, remaining: r.opts.MaxMediaSize}
 	if _, err := downloader.NewDownloader().Download(r.api, location).WithVerify(false).Stream(ctx, limited); err != nil {
-		return *media, fmt.Errorf("download media: %w", err)
+		return attachment, fmt.Errorf("download media: %w", err)
 	}
-	return *media, nil
+	return attachment, nil
 }
 
 func (r *Reader) message(ctx context.Context, chat resolvedChat, id int) (*tg.Message, error) {

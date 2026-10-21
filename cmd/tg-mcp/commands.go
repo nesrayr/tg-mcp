@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strconv"
@@ -14,14 +15,21 @@ import (
 	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nesrayr/tg-mcp/internal/config"
 	"github.com/nesrayr/tg-mcp/internal/domain"
 	"github.com/nesrayr/tg-mcp/internal/login"
+	"github.com/nesrayr/tg-mcp/internal/mcpserver"
 	"github.com/nesrayr/tg-mcp/internal/telegram"
 )
 
-const loginTimeout = 10 * time.Minute
+const (
+	loginTimeout    = 10 * time.Minute
+	maxMediaSize    = 20 << 20
+	downloadTimeout = 2 * time.Minute
+	mediaTTL        = 7 * 24 * time.Hour
+)
 
 var ErrNotLoggedIn = errors.New("not logged in, run `tg-mcp login` first")
 
@@ -221,8 +229,36 @@ func editAllowlist(args []string, edit func(*config.Config, []domain.ChatRef) (i
 	return nil
 }
 
-func runServe(context.Context, []string) error {
-	return errors.New("serve is not implemented yet")
+func runServe(ctx context.Context, args []string) error {
+	if err := flag.NewFlagSet("serve", flag.ContinueOnError).Parse(args); err != nil {
+		return err
+	}
+	paths, cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	refs, err := cfg.ChatRefs()
+	if err != nil {
+		return err
+	}
+
+	// stdout is taken by the MCP protocol: everything else goes to stderr only.
+	return withSession(ctx, paths, cfg, func(ctx context.Context, client *gotd.Client) error {
+		logger := slog.Default()
+		directory := telegram.NewDirectory(client.API(), refs, logger)
+		reader := telegram.NewReader(client.API(), directory, telegram.ReaderOptions{
+			MaxMediaSize:    maxMediaSize,
+			DownloadTimeout: downloadTimeout,
+		})
+		server := mcpserver.New(mcpserver.Options{
+			Reader:   reader,
+			Media:    mcpserver.NewMediaStore(paths.MediaDir, mediaTTL, time.Now),
+			Location: time.Local,
+			Logger:   logger,
+			Version:  version,
+		})
+		return server.Run(ctx, &mcp.StdioTransport{})
+	})
 }
 
 func loadConfig() (config.Paths, config.Config, error) {

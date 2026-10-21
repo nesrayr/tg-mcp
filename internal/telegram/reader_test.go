@@ -206,9 +206,10 @@ func Test_Reader_DownloadMedia(t *testing.T) {
 		expectFile(mock, &tg.InputPhotoFileLocation{ID: 900, AccessHash: 901, FileReference: []byte{9, 9}, ThumbSize: "y"}, []byte("jpeg-bytes"))
 
 		var buf bytes.Buffer
-		media, err := reader.DownloadMedia(ctx, domain.ChatRef{ID: momChatID}, 12, &buf)
+		attachment, err := reader.DownloadMedia(ctx, domain.ChatRef{ID: momChatID}, 12, &buf)
 		require.NoError(t, err)
-		require.Equal(t, domain.MediaKindPhoto, media.Kind)
+		require.Equal(t, momChatID, attachment.ChatID)
+		require.Equal(t, domain.MediaKindPhoto, attachment.Media.Kind)
 		require.Equal(t, "jpeg-bytes", buf.String())
 	})
 
@@ -227,9 +228,13 @@ func Test_Reader_DownloadMedia(t *testing.T) {
 		expectFile(mock, &tg.InputDocumentFileLocation{ID: 800, AccessHash: 801, FileReference: []byte{8}}, []byte("pdf"))
 
 		var buf bytes.Buffer
-		media, err := reader.DownloadMedia(ctx, domain.ChatRef{Username: "gonews"}, 7, &buf)
+		attachment, err := reader.DownloadMedia(ctx, domain.ChatRef{Username: "gonews"}, 7, &buf)
 		require.NoError(t, err)
-		require.Equal(t, domain.Media{Kind: domain.MediaKindPDF, FileName: "report.pdf", MimeType: "application/pdf", Size: 3, Downloadable: true}, media)
+		require.Equal(t, domain.Attachment{
+			ChatID:    newsChatID,
+			MessageID: 7,
+			Media:     domain.Media{Kind: domain.MediaKindPDF, FileName: "report.pdf", MimeType: "application/pdf", Size: 3, Downloadable: true},
+		}, attachment)
 		require.Equal(t, "pdf", buf.String())
 	})
 

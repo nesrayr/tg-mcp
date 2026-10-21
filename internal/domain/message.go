@@ -43,3 +43,10 @@ type Media struct {
 	Downloadable bool
 	Description  string
 }
+
+// Attachment is a downloaded attachment together with the message it belongs to.
+type Attachment struct {
+	ChatID    int64
+	MessageID int
+	Media     Media
+}
