@@ -1,0 +1,7 @@
+/bin/
+
+# Secrets must never end up in the repository.
+*.session
+session*.json
+config.json
+.env
