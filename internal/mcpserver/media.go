@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nesrayr/tg-mcp/internal/config"
+	"github.com/nesrayr/tg-mcp/internal/domain"
 )
 
 // MediaStore keeps downloaded attachments that the model reads from disk (PDFs and large
@@ -25,7 +26,7 @@ func NewMediaStore(dir string, ttl time.Duration, now func() time.Time) *MediaSt
 }
 
 // Save writes the file with mode 0600 and returns its path.
-func (m *MediaStore) Save(chatID int64, messageID int, mime string, data []byte) (string, error) {
+func (m *MediaStore) Save(chatID int64, messageID int, ext string, data []byte) (string, error) {
 	if err := config.EnsurePrivateDir(m.dir); err != nil {
 		return "", err
 	}
@@ -33,7 +34,7 @@ func (m *MediaStore) Save(chatID int64, messageID int, mime string, data []byte)
 		return "", err
 	}
 
-	path := filepath.Join(m.dir, fmt.Sprintf("%d_%d%s", chatID, messageID, extension(mime)))
+	path := filepath.Join(m.dir, fmt.Sprintf("%d_%d%s", chatID, messageID, ext))
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", fmt.Errorf("save media: %w", err)
 	}
@@ -72,10 +73,13 @@ func (m *MediaStore) Cleanup() error {
 	return nil
 }
 
-func extension(mime string) string {
-	switch mime {
-	case "application/pdf":
+// fileExtension picks an extension by attachment kind: PDFs sometimes arrive
+// as application/octet-stream, and the file reading tool relies on the extension.
+func fileExtension(media domain.Media) string {
+	if media.Kind == domain.MediaKindPDF {
 		return ".pdf"
+	}
+	switch media.MimeType {
 	case "image/jpeg":
 		return ".jpg"
 	case "image/png":

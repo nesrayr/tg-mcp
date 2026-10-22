@@ -71,6 +71,38 @@ func Test_classifyMedia(t *testing.T) {
 			want:  &domain.Media{Kind: domain.MediaKindVideo, MimeType: "video/mp4", Size: 10},
 		},
 		{
+			name: "docx",
+			media: &tg.MessageMediaDocument{Document: testDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document", 10,
+				&tg.DocumentAttributeFilename{FileName: "Schedule.docx"})},
+			want: &domain.Media{Kind: domain.MediaKindDOCX, FileName: "Schedule.docx", MimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", Size: 10, Downloadable: true},
+		},
+		{
+			name: "xlsx",
+			media: &tg.MessageMediaDocument{Document: testDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 10,
+				&tg.DocumentAttributeFilename{FileName: "group.xlsx"})},
+			want: &domain.Media{Kind: domain.MediaKindXLSX, FileName: "group.xlsx", MimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Size: 10, Downloadable: true},
+		},
+		{
+			name:  "xlsx sent as octet-stream",
+			media: &tg.MessageMediaDocument{Document: testDocument("application/octet-stream", 10, &tg.DocumentAttributeFilename{FileName: "Classes.XLSX"})},
+			want:  &domain.Media{Kind: domain.MediaKindXLSX, FileName: "Classes.XLSX", MimeType: "application/octet-stream", Size: 10, Downloadable: true},
+		},
+		{
+			name:  "pdf sent as octet-stream",
+			media: &tg.MessageMediaDocument{Document: testDocument("application/octet-stream", 10, &tg.DocumentAttributeFilename{FileName: "scan.pdf"})},
+			want:  &domain.Media{Kind: domain.MediaKindPDF, FileName: "scan.pdf", MimeType: "application/octet-stream", Size: 10, Downloadable: true},
+		},
+		{
+			name:  "extension does not override specific mime",
+			media: &tg.MessageMediaDocument{Document: testDocument("text/plain", 10, &tg.DocumentAttributeFilename{FileName: "fake.docx"})},
+			want:  &domain.Media{Kind: domain.MediaKindDocument, FileName: "fake.docx", MimeType: "text/plain", Size: 10},
+		},
+		{
+			name:  "legacy doc is not supported",
+			media: &tg.MessageMediaDocument{Document: testDocument("application/msword", 10, &tg.DocumentAttributeFilename{FileName: "old.doc"})},
+			want:  &domain.Media{Kind: domain.MediaKindDocument, FileName: "old.doc", MimeType: "application/msword", Size: 10},
+		},
+		{
 			name:  "zip archive",
 			media: &tg.MessageMediaDocument{Document: testDocument("application/zip", 10, &tg.DocumentAttributeFilename{FileName: "a.zip"})},
 			want:  &domain.Media{Kind: domain.MediaKindDocument, FileName: "a.zip", MimeType: "application/zip", Size: 10},

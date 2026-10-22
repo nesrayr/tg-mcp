@@ -315,6 +315,57 @@ func Test_GetMedia(t *testing.T) {
 		require.Equal(t, filepath.Join(f.mediaDir, "42_3.png"), out.Path)
 	})
 
+	t.Run("pdf sent as octet-stream keeps pdf extension", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t)
+		pdf := domain.Media{Kind: domain.MediaKindPDF, FileName: "scan.pdf", MimeType: "application/octet-stream", Size: 3, Downloadable: true}
+		expectDownload(f, domain.ChatRef{ID: 42}, 8, domain.Attachment{ChatID: 42, MessageID: 8, Media: pdf}, []byte("pdf"))
+
+		out := decodeText[MediaOutput](t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 8}), 0)
+		require.Equal(t, filepath.Join(f.mediaDir, "42_8.pdf"), out.Path)
+	})
+
+	t.Run("docx text is extracted and sanitized", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t)
+		document := buildDocx(t, `<w:p><w:r><w:t>Classes on Tuesday</w:t></w:r></w:p>`+
+			`<w:tbl><w:tr><w:tc><w:p><w:r><w:t>16:30</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Smith`+"\u202e"+`</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`)
+		media := domain.Media{Kind: domain.MediaKindDOCX, FileName: "Classes.docx", Size: int64(len(document)), Downloadable: true}
+		expectDownload(f, domain.ChatRef{ID: 42}, 4, domain.Attachment{ChatID: 42, MessageID: 4, Media: media}, document)
+
+		out := decodeText[DocumentOutput](t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 4}), 0)
+		require.Equal(t, "Classes on Tuesday\n| 16:30 | Smith |", out.Text)
+		require.False(t, out.Truncated)
+		require.Empty(t, out.Path)
+		require.Equal(t, untrustedNotice, out.Notice)
+		require.NoDirExists(t, f.mediaDir)
+	})
+
+	t.Run("xlsx text is extracted", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t)
+		book := buildXlsx(t, `<row r="1"><c r="A1" t="inlineStr"><is><t>Fri</t></is></c><c r="B1" t="inlineStr"><is><t>Philosophy</t></is></c></row>`)
+		media := domain.Media{Kind: domain.MediaKindXLSX, FileName: "Classes.xlsx", Size: int64(len(book)), Downloadable: true}
+		expectDownload(f, domain.ChatRef{ID: 42}, 5, domain.Attachment{ChatID: 42, MessageID: 5, Media: media}, book)
+
+		out := decodeText[DocumentOutput](t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 5}), 0)
+		require.Equal(t, "## Sheet: Sheet1\n1 | Fri | Philosophy |", out.Text)
+		require.Contains(t, out.Hint, "merged cell")
+	})
+
+	t.Run("broken docx", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t)
+		media := domain.Media{Kind: domain.MediaKindDOCX, FileName: "broken.docx", Size: 4, Downloadable: true}
+		expectDownload(f, domain.ChatRef{ID: 42}, 6, domain.Attachment{ChatID: 42, MessageID: 6, Media: media}, []byte("nope"))
+
+		require.Contains(t, errorText(t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 6})), "invalid office document")
+	})
+
 	t.Run("download error", func(t *testing.T) {
 		t.Parallel()
 

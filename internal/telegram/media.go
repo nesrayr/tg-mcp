@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"path"
 	"strings"
 
 	"github.com/gotd/td/tg"
@@ -79,22 +80,52 @@ func classifyDocument(document *tg.Document, maxSize int64) *domain.Media {
 		result.Kind = domain.MediaKindSticker
 	}
 	if result.Kind == domain.MediaKindDocument {
-		switch {
-		case document.MimeType == "application/pdf":
-			result.Kind = domain.MediaKindPDF
-		case isSupportedImage(document.MimeType):
-			result.Kind = domain.MediaKindImage
-		}
+		result.Kind = documentKind(document.MimeType, result.FileName)
 	}
 
 	result.Downloadable = isDownloadableKind(result.Kind) && document.Size <= maxSize
 	return result
 }
 
+// Some clients send files as application/octet-stream, so
+// for these MIME types the kind is determined by the file name extension.
+var genericMIME = map[string]struct{}{
+	"":                         {},
+	"application/octet-stream": {},
+	"application/zip":          {},
+}
+
+func documentKind(mime, fileName string) domain.MediaKind {
+	switch {
+	case mime == "application/pdf":
+		return domain.MediaKindPDF
+	case mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		return domain.MediaKindDOCX
+	case mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+		return domain.MediaKindXLSX
+	case isSupportedImage(mime):
+		return domain.MediaKindImage
+	}
+
+	if _, generic := genericMIME[mime]; !generic {
+		return domain.MediaKindDocument
+	}
+	switch strings.ToLower(path.Ext(fileName)) {
+	case ".pdf":
+		return domain.MediaKindPDF
+	case ".docx":
+		return domain.MediaKindDOCX
+	case ".xlsx":
+		return domain.MediaKindXLSX
+	default:
+		return domain.MediaKindDocument
+	}
+}
+
 // isDownloadableKind reports the attachment kinds the model can process.
 func isDownloadableKind(kind domain.MediaKind) bool {
 	switch kind {
-	case domain.MediaKindPhoto, domain.MediaKindImage, domain.MediaKindPDF:
+	case domain.MediaKindPhoto, domain.MediaKindImage, domain.MediaKindPDF, domain.MediaKindDOCX, domain.MediaKindXLSX:
 		return true
 	default:
 		return false

@@ -1,7 +1,7 @@
 # tg-mcp
 
 An MCP server that gives an AI agent (Claude Code and other MCP clients) **read-only access**
-to selected chats of your personal Telegram account: messages, search, photos and PDFs.
+to selected chats of your personal Telegram account: messages, search, photos, PDF, DOCX and XLSX.
 
 ## Security model
 
@@ -14,6 +14,7 @@ to selected chats of your personal Telegram account: messages, search, photos an
 | Prompt injection in messages | Every response is marked as untrusted data. Control characters, bidi overrides, zero-width characters and Unicode tags are stripped from the text. Length is limited |
 | Session leak | Config and session live in `~/.config/tg-mcp/` (directory 0700, files 0600); the server refuses to start with looser permissions |
 | Malicious file name | Attachments are saved as `<chat_id>_<message_id>.<ext>`; the sender's file name never becomes part of the path |
+| Malicious DOCX/XLSX | Text is extracted by the server itself using the Go standard library: macros are not executed, external XML entities are not loaded, decompression is bounded (zip bomb protection) |
 
 Residual risk: chat text ends up in the model's context. The server sends nothing, but
 keep the agent's network tools (WebFetch and the like) behind a confirmation prompt.
@@ -78,9 +79,11 @@ Run all commands below **in a separate terminal tab**, not through the agent.
 | `list_chats` | Allowed chats: ID, type, title, unread count, time of the last message |
 | `read_messages` | Chat messages in order; `before_id`/`after_id` for paging, up to 100 at a time |
 | `search_messages` | Text search in one or all allowed chats |
-| `get_media` | Photos as an image in the response; PDFs and large images as a file in `~/.cache/tg-mcp/media/` |
+| `get_media` | Photos as an image in the response; DOCX and XLSX as extracted text (tables row by row, merged cells expanded, dates in the cell's format); PDFs and large images as a file in `~/.cache/tg-mcp/media/` |
 
-Limits: attachments up to 20 MB, inline images up to 5 MB, photos at up to 1280 px,
+Legacy `.doc`/`.xls` formats are not supported.
+
+Limits: attachments up to 20 MB, inline images up to 5 MB, photos at up to 1280 px, Excel sheets up to 2000 rows and 100 columns,
 up to ~60,000 characters of text per response; files are deleted after 7 days.
 
 ## Files
@@ -105,6 +108,7 @@ Layout:
 
 - `internal/telegram` — layer over gotd: `Guard` (RPC allowlist), `Directory` (chat allowlist), `Reader`
 - `internal/mcpserver` — MCP tools, text sanitization, attachment storage
+- `internal/office` — text extraction from DOCX and XLSX
 - `internal/login` — QR and code login
 - `internal/config` — config with permission checks
 - `cmd/tg-mcp` — CLI

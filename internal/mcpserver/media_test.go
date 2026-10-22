@@ -45,7 +45,7 @@ func Test_MediaStore_Save_OverwritesWithPrivateMode(t *testing.T) {
 	path := filepath.Join(dir, "5_6.pdf")
 	require.NoError(t, os.WriteFile(path, []byte("stale"), 0o644))
 
-	got, err := store.Save(5, 6, "application/pdf", []byte("new"))
+	got, err := store.Save(5, 6, ".pdf", []byte("new"))
 	require.NoError(t, err)
 	require.Equal(t, path, got)
 

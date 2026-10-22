@@ -16,6 +16,12 @@ const (
 // instructions from a human but not from the model: control characters, bidi
 // overrides, zero-width characters and Unicode tags. The length is limited.
 func sanitize(text string, maxRunes int) string {
+	clean, _ := sanitizeTruncated(text, maxRunes)
+	return clean
+}
+
+// sanitizeTruncated is sanitize that also reports whether the text was truncated.
+func sanitizeTruncated(text string, maxRunes int) (string, bool) {
 	text = strings.ToValidUTF8(text, "�")
 
 	var b strings.Builder
@@ -27,12 +33,12 @@ func sanitize(text string, maxRunes int) string {
 		}
 		if count == maxRunes {
 			b.WriteString(truncatedMark)
-			break
+			return b.String(), true
 		}
 		b.WriteRune(r)
 		count++
 	}
-	return b.String()
+	return b.String(), false
 }
 
 func isHidden(r rune) bool {

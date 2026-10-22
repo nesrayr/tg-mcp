@@ -24,6 +24,8 @@ const (
 	MediaKindPhoto    MediaKind = "photo"
 	MediaKindImage    MediaKind = "image"
 	MediaKindPDF      MediaKind = "pdf"
+	MediaKindDOCX     MediaKind = "docx"
+	MediaKindXLSX     MediaKind = "xlsx"
 	MediaKindDocument MediaKind = "document"
 	MediaKindVoice    MediaKind = "voice"
 	MediaKindAudio    MediaKind = "audio"
@@ -33,7 +35,7 @@ const (
 )
 
 // Media describes an attachment. Downloadable means the attachment can be fetched
-// through the server: currently only photos, images and PDFs within the size limit.
+// through the server: photos, images, PDF, DOCX and XLSX within the size limit.
 // Description is set for other attachments (geo, poll, contact…).
 type Media struct {
 	Kind         MediaKind
