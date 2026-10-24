@@ -3,8 +3,10 @@ package office
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -114,10 +116,24 @@ func Test_archive_UnpackLimit(t *testing.T) {
 
 	data := buildZip(t, map[string]string{"word/document.xml": strings.Repeat("a", 100)})
 
-	arc, err := openArchiveLimit(data, 10)
+	arc, err := openArchiveLimit(data, 10, 1000)
 	require.NoError(t, err)
 
 	_, err = arc.read("word/document.xml")
+	require.ErrorIs(t, err, ErrTooLarge)
+}
+
+func Test_archive_TotalUnpackLimit(t *testing.T) {
+	t.Parallel()
+
+	data := buildZip(t, map[string]string{"xl/worksheets/sheet1.xml": strings.Repeat("a", 60)})
+
+	arc, err := openArchiveLimit(data, 100, 100)
+	require.NoError(t, err)
+
+	_, err = arc.read("xl/worksheets/sheet1.xml")
+	require.NoError(t, err)
+	_, err = arc.read("xl/worksheets/sheet1.xml")
 	require.ErrorIs(t, err, ErrTooLarge)
 }
 
@@ -196,6 +212,31 @@ func Test_XlsxText_Limits(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, got, "far")
 	require.Contains(t, got, "[sheet truncated")
+}
+
+func Test_XlsxText_OutputLimit(t *testing.T) {
+	t.Parallel()
+
+	// Every cell references one large shared string: a tiny file must not expand
+	// into hundreds of megabytes of text.
+	var cells strings.Builder
+	for row := 1; row <= 20; row++ {
+		fmt.Fprintf(&cells, `<row r="%d">`, row)
+		for col := 'A'; col <= 'T'; col++ {
+			fmt.Fprintf(&cells, `<c r="%c%d" t="s"><v>0</v></c>`, col, row)
+		}
+		cells.WriteString(`</row>`)
+	}
+	sheet := `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>` +
+		cells.String() + `</sheetData></worksheet>`
+	shared := `<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>` +
+		strings.Repeat("é\n", 1<<15) + `</t></si></sst>`
+
+	got, err := XlsxText(xlsx(t, sheet, map[string]string{"xl/sharedStrings.xml": shared}))
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(got), maxOutputBytes+len(outputTruncatedMark)+1)
+	require.True(t, strings.HasSuffix(got, outputTruncatedMark))
+	require.True(t, utf8.ValidString(got))
 }
 
 func Test_formatCodeKind(t *testing.T) {

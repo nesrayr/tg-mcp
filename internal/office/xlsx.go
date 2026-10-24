@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -17,6 +18,10 @@ const (
 	// maxMergedCells limits merge expansion: otherwise a file with thousands of
 	// huge merges would force iterating over billions of cells.
 	maxMergedCells = 200_000
+	// maxOutputBytes bounds the extracted text: every cell can reference the same huge
+	// shared string, so a few kilobytes of XML would otherwise expand into gigabytes.
+	maxOutputBytes      = 1 << 20
+	outputTruncatedMark = "[output truncated]"
 )
 
 // XlsxText returns the contents of an Excel workbook: for each sheet, a header and rows
@@ -42,8 +47,11 @@ func XlsxText(data []byte) (string, error) {
 		return "", err
 	}
 
-	var out strings.Builder
+	out := &limitedText{limit: maxOutputBytes}
 	for _, sheet := range sheets {
+		if out.full {
+			break
+		}
 		raw, err := arc.mustRead(sheet.path)
 		if err != nil {
 			return "", err
@@ -52,11 +60,46 @@ func XlsxText(data []byte) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("sheet %q: %w", sheet.name, err)
 		}
-		fmt.Fprintf(&out, "## Sheet: %s\n", sheet.name)
-		grid.render(&out)
-		out.WriteByte('\n')
+		fmt.Fprintf(out, "## Sheet: %s\n", sheet.name)
+		grid.render(out)
+		out.WriteString("\n")
 	}
-	return strings.TrimSpace(out.String()), nil
+
+	text := strings.TrimSpace(out.String())
+	if out.full {
+		text += "\n" + outputTruncatedMark
+	}
+	return text, nil
+}
+
+// limitedText collects text up to limit bytes and silently drops the rest.
+type limitedText struct {
+	b     strings.Builder
+	limit int
+	full  bool
+}
+
+func (t *limitedText) Write(p []byte) (int, error) {
+	t.WriteString(string(p))
+	return len(p), nil
+}
+
+func (t *limitedText) WriteString(s string) {
+	if t.full {
+		return
+	}
+	if room := t.limit - t.b.Len(); len(s) > room {
+		for room > 0 && !utf8.RuneStart(s[room]) {
+			room--
+		}
+		s = s[:room]
+		t.full = true
+	}
+	t.b.WriteString(s)
+}
+
+func (t *limitedText) String() string {
+	return t.b.String()
 }
 
 type sheetRef struct {
@@ -378,7 +421,7 @@ func cellValue(typ, raw string, inline richText, style int, shared []string, sty
 	return strconv.FormatFloat(number, 'f', -1, 64)
 }
 
-func (g *grid) render(out *strings.Builder) {
+func (g *grid) render(out *limitedText) {
 	rows := make([]int, 0, len(g.cells))
 	seen := make(map[int]struct{})
 	for pos := range g.cells {
@@ -390,6 +433,9 @@ func (g *grid) render(out *strings.Builder) {
 	slices.Sort(rows)
 
 	for _, row := range rows {
+		if out.full {
+			return
+		}
 		values := make([]string, 0, g.maxCol)
 		last := 0
 		prevMerge := -1
@@ -403,15 +449,38 @@ func (g *grid) render(out *strings.Builder) {
 				prevMerge = merge
 			}
 			value := g.cells[cellPos{row, col}]
-			values = append(values, strings.ReplaceAll(value, "\n", " / "))
+			values = append(values, value)
 			if value != "" {
 				last = len(values)
 			}
 		}
-		fmt.Fprintf(out, "%d | %s |\n", row, strings.Join(values[:last], " | "))
+
+		// Cells are written one by one instead of joined: a single row can hold
+		// a hundred references to a multi-megabyte string.
+		fmt.Fprintf(out, "%d | ", row)
+		for i, value := range values[:last] {
+			if i > 0 {
+				out.WriteString(" | ")
+			}
+			writeCell(out, value)
+		}
+		out.WriteString(" |\n")
 	}
 	if g.capped {
 		fmt.Fprintf(out, "[sheet truncated: showing the first %d rows and %d columns]\n", maxSheetRows, maxSheetCols)
+	}
+}
+
+// writeCell writes a cell value on one line, replacing line breaks with " / ".
+func writeCell(out *limitedText, value string) {
+	for !out.full {
+		line, rest, found := strings.Cut(value, "\n")
+		out.WriteString(line)
+		if !found {
+			return
+		}
+		out.WriteString(" / ")
+		value = rest
 	}
 }
 

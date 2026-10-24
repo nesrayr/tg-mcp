@@ -18,6 +18,9 @@ import (
 const (
 	maxEntries          = 10_000
 	maxUncompressedPart = 50 << 20
+	// maxUncompressedTotal bounds all parts read from one archive: a workbook can list
+	// thousands of sheets that point to the same large part.
+	maxUncompressedTotal = 200 << 20
 )
 
 var (
@@ -26,15 +29,16 @@ var (
 )
 
 type archive struct {
-	files map[string]*zip.File
-	limit int64
+	files     map[string]*zip.File
+	limit     int64
+	remaining int64
 }
 
 func openArchive(data []byte) (*archive, error) {
-	return openArchiveLimit(data, maxUncompressedPart)
+	return openArchiveLimit(data, maxUncompressedPart, maxUncompressedTotal)
 }
 
-func openArchiveLimit(data []byte, limit int64) (*archive, error) {
+func openArchiveLimit(data []byte, partLimit, totalLimit int64) (*archive, error) {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidDocument, err)
@@ -47,7 +51,7 @@ func openArchiveLimit(data []byte, limit int64) (*archive, error) {
 	for _, file := range reader.File {
 		files[strings.TrimPrefix(file.Name, "/")] = file
 	}
-	return &archive{files: files, limit: limit}, nil
+	return &archive{files: files, limit: partLimit, remaining: totalLimit}, nil
 }
 
 // read returns the contents of an archive part, or nil if the part is missing.
@@ -56,7 +60,8 @@ func (a *archive) read(name string) ([]byte, error) {
 	if !ok {
 		return nil, nil
 	}
-	if file.UncompressedSize64 > uint64(a.limit) {
+	limit := min(a.limit, a.remaining)
+	if file.UncompressedSize64 > uint64(limit) {
 		return nil, fmt.Errorf("%w: %s", ErrTooLarge, name)
 	}
 
@@ -67,13 +72,14 @@ func (a *archive) read(name string) ([]byte, error) {
 	defer rc.Close()
 
 	// The zip header can be forged, so the limit is also checked while reading.
-	data, err := io.ReadAll(io.LimitReader(rc, a.limit+1))
+	data, err := io.ReadAll(io.LimitReader(rc, limit+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidDocument, name, err)
 	}
-	if int64(len(data)) > a.limit {
+	if int64(len(data)) > limit {
 		return nil, fmt.Errorf("%w: %s", ErrTooLarge, name)
 	}
+	a.remaining -= int64(len(data))
 	return data, nil
 }
 
