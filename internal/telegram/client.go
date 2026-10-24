@@ -45,8 +45,8 @@ func NewClient(opts ClientOptions) *telegram.Client {
 			DeviceModel:    "tg-mcp",
 			SystemVersion:  runtime.GOOS,
 			AppVersion:     opts.AppVersion,
-			SystemLangCode: "ru",
-			LangCode:       "ru",
+			SystemLangCode: "en",
+			LangCode:       "en",
 		},
 	})
 }
