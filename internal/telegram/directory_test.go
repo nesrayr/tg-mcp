@@ -32,14 +32,32 @@ func Test_Directory_Allowed(t *testing.T) {
 			require.Equal(t, dialogsBatchSize, request.Limit)
 		}).ThenResult(&tg.MessagesDialogs{
 			Dialogs: []tg.DialogClass{
-				&tg.Dialog{Peer: &tg.PeerChat{ChatID: 5}, TopMessage: 11},
-				&tg.Dialog{Peer: &tg.PeerUser{UserID: momUserID}, TopMessage: 10},
+				&tg.Dialog{
+					Peer:       &tg.PeerChat{ChatID: 5},
+					TopMessage: 11,
+				},
+				&tg.Dialog{
+					Peer:       &tg.PeerUser{UserID: momUserID},
+					TopMessage: 10,
+				},
 			},
 			Messages: []tg.MessageClass{
-				&tg.Message{ID: 11, PeerID: &tg.PeerChat{ChatID: 5}, Date: unix(0)},
-				&tg.Message{ID: 10, PeerID: &tg.PeerUser{UserID: momUserID}, Date: unix(0)},
+				&tg.Message{
+					ID:     11,
+					PeerID: &tg.PeerChat{ChatID: 5},
+					Date:   unix(0),
+				},
+				&tg.Message{
+					ID:     10,
+					PeerID: &tg.PeerUser{UserID: momUserID},
+					Date:   unix(0),
+				},
 			},
-			Chats: []tg.ChatClass{&tg.Chat{ID: 5, Title: "Work", Photo: &tg.ChatPhotoEmpty{}}},
+			Chats: []tg.ChatClass{&tg.Chat{
+				ID:    5,
+				Title: "Work",
+				Photo: &tg.ChatPhotoEmpty{},
+			}},
 			Users: []tg.UserClass{momUser()},
 		})
 		mock.ExpectFunc(func(b bin.Encoder) {
@@ -53,8 +71,24 @@ func Test_Directory_Allowed(t *testing.T) {
 		allowed, err := directory.Allowed(ctx)
 		require.NoError(t, err)
 		require.Equal(t, []resolvedChat{
-			{chat: domain.Chat{ID: momChatID, Kind: domain.ChatKindPrivate, Title: "Mom", Username: "mama_tg"}, peer: momPeer},
-			{chat: domain.Chat{ID: newsChatID, Kind: domain.ChatKindChannel, Title: "Go News", Username: "gonews"}, peer: newsPeer},
+			{
+				chat: domain.Chat{
+					ID:       momChatID,
+					Kind:     domain.ChatKindPrivate,
+					Title:    "Mom",
+					Username: "mama_tg",
+				},
+				peer: momPeer,
+			},
+			{
+				chat: domain.Chat{
+					ID:       newsChatID,
+					Kind:     domain.ChatKindChannel,
+					Title:    "Go News",
+					Username: "gonews",
+				},
+				peer: newsPeer,
+			},
 		}, allowed)
 
 		cached, err := directory.Allowed(ctx)
@@ -115,10 +149,26 @@ func Test_Directory_Resolve(t *testing.T) {
 		want    int64
 		wantErr bool
 	}{
-		{name: "by id", ref: domain.ChatRef{ID: newsChatID}, want: newsChatID},
-		{name: "by username in any case", ref: domain.ChatRef{Username: "MAMA_TG"}, want: momChatID},
-		{name: "chat outside allowlist", ref: domain.ChatRef{ID: 12345}, wantErr: true},
-		{name: "username outside allowlist", ref: domain.ChatRef{Username: "durov"}, wantErr: true},
+		{
+			name: "by id",
+			ref:  domain.ChatRef{ID: newsChatID},
+			want: newsChatID,
+		},
+		{
+			name: "by username in any case",
+			ref:  domain.ChatRef{Username: "MAMA_TG"},
+			want: momChatID,
+		},
+		{
+			name:    "chat outside allowlist",
+			ref:     domain.ChatRef{ID: 12345},
+			wantErr: true,
+		},
+		{
+			name:    "username outside allowlist",
+			ref:     domain.ChatRef{Username: "durov"},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

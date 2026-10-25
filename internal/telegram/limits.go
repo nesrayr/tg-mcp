@@ -26,15 +26,14 @@ func SleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// FloodWait retries a request after FLOOD_WAIT if Telegram asks to wait
-// no longer than maxWait. A longer wait is returned as an error: it is better to report
-// the limit than to hang the tool call.
+// FloodWait retries a request after FLOOD_WAIT if Telegram asks to wait no longer than maxWait.
 func FloodWait(maxWait time.Duration, maxRetries int, wait WaitFunc) telegram.Middleware {
 	return telegram.MiddlewareFunc(func(next tg.Invoker) telegram.InvokeFunc {
 		return func(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
 			for attempt := 0; ; attempt++ {
 				err := next.Invoke(ctx, input, output)
 				delay, ok := tgerr.AsFloodWait(err)
+				// A longer wait is returned as an error: reporting the limit beats hanging the tool call.
 				if !ok || attempt >= maxRetries || delay > maxWait {
 					return err
 				}

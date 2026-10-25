@@ -13,8 +13,7 @@ import (
 	"golang.org/x/term"
 )
 
-// ErrNotTerminal means the command is not running in an interactive terminal. Login requires
-// hidden password input, and QR codes and account data must not end up in logs.
+// ErrNotTerminal means there is no interactive terminal for hidden input and output kept out of logs.
 var ErrNotTerminal = errors.New("interactive terminal required: run this command in a separate terminal tab, not through an AI agent or a pipe")
 
 //go:generate go tool mockgen -source=prompt.go -destination=mocks/prompter_mock.go -package=mocks
@@ -25,8 +24,7 @@ type Prompter interface {
 	Secret(ctx context.Context, prompt string) (string, error)
 }
 
-// Terminal is a Prompter on top of stdin/stderr. Prompts go to stderr so they do not
-// mix with the command output.
+// Terminal is a Prompter on top of stdin/stderr.
 type Terminal struct {
 	in     *os.File
 	out    io.Writer
@@ -38,7 +36,12 @@ func NewTerminal() (*Terminal, error) {
 	if !IsTerminal(os.Stdin) || !IsTerminal(os.Stdout) {
 		return nil, ErrNotTerminal
 	}
-	return &Terminal{in: os.Stdin, out: os.Stderr, reader: bufio.NewReader(os.Stdin)}, nil
+	// Prompts go to stderr so they do not mix with the command output.
+	return &Terminal{
+		in:     os.Stdin,
+		out:    os.Stderr,
+		reader: bufio.NewReader(os.Stdin),
+	}, nil
 }
 
 // IsTerminal reports whether the file is attached to a terminal.

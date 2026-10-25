@@ -14,8 +14,7 @@ import (
 	"github.com/nesrayr/tg-mcp/internal/domain"
 )
 
-// ErrChatUnavailable means the chat was not found or is not in allowed_chats. The reasons are deliberately
-// not distinguished, so as not to reveal the existence of chats outside the allowlist.
+// ErrChatUnavailable does not tell a missing chat from one outside allowed_chats, so the allowlist leaks nothing.
 var ErrChatUnavailable = errors.New("chat not found or not in allowed_chats")
 
 const (
@@ -24,9 +23,6 @@ const (
 )
 
 // Directory knows only allowlisted chats. Anything outside the allowlist does not exist for the server.
-//
-// Chats are resolved once (access_hash is stable in Telegram), so after changing
-// allowed_chats the server must be restarted. Resolution failures caused by the network are not cached.
 type Directory struct {
 	api    *tg.Client
 	refs   []domain.ChatRef
@@ -38,7 +34,11 @@ type Directory struct {
 }
 
 func NewDirectory(api *tg.Client, refs []domain.ChatRef, logger *slog.Logger) *Directory {
-	return &Directory{api: api, refs: refs, logger: logger}
+	return &Directory{
+		api:    api,
+		refs:   refs,
+		logger: logger,
+	}
 }
 
 // Allowed returns the allowed chats in allowed_chats order.
@@ -46,12 +46,14 @@ func (d *Directory) Allowed(ctx context.Context) ([]resolvedChat, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	// Resolved once: access_hash is stable, so changing allowed_chats needs a restart.
 	if d.ready {
 		return d.resolved, nil
 	}
 
 	resolved, err := d.resolve(ctx)
 	if err != nil {
+		// Not cached, so a network failure is retried on the next call.
 		return nil, err
 	}
 	d.resolved, d.ready = resolved, true
@@ -98,6 +100,7 @@ func (d *Directory) resolve(ctx context.Context) ([]resolvedChat, error) {
 		}
 	}
 
+	// The dialog list is the only place to get an access_hash for a chat known only by ID.
 	if len(pendingIDs) > 0 {
 		if err := d.scanDialogs(ctx, pendingIDs, found); err != nil {
 			return nil, err
@@ -137,8 +140,6 @@ func (d *Directory) resolveUsername(ctx context.Context, username string) (resol
 	return chat, ok, nil
 }
 
-// scanDialogs looks for numeric IDs in the dialog list: it is the only place to get an
-// access_hash for a chat known only by ID. Stops as soon as all of them are found.
 func (d *Directory) scanDialogs(ctx context.Context, pending map[int64]domain.ChatRef, found map[domain.ChatRef]resolvedChat) error {
 	iter := dialogs.NewQueryBuilder(d.api).GetDialogs().BatchSize(dialogsBatchSize).Iter()
 

@@ -34,9 +34,7 @@ const (
 	MediaKindOther    MediaKind = "other"
 )
 
-// Media describes an attachment. Downloadable means the attachment can be fetched
-// through the server: photos, images, PDF, DOCX and XLSX within the size limit.
-// Description is set for other attachments (geo, poll, contact…).
+// Media describes an attachment; Downloadable marks ones the server can fetch.
 type Media struct {
 	Kind         MediaKind
 	FileName     string

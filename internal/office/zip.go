@@ -51,10 +51,13 @@ func openArchiveLimit(data []byte, partLimit, totalLimit int64) (*archive, error
 	for _, file := range reader.File {
 		files[strings.TrimPrefix(file.Name, "/")] = file
 	}
-	return &archive{files: files, limit: partLimit, remaining: totalLimit}, nil
+	return &archive{
+		files:     files,
+		limit:     partLimit,
+		remaining: totalLimit,
+	}, nil
 }
 
-// read returns the contents of an archive part, or nil if the part is missing.
 func (a *archive) read(name string) ([]byte, error) {
 	file, ok := a.files[name]
 	if !ok {
@@ -94,7 +97,6 @@ func (a *archive) mustRead(name string) ([]byte, error) {
 	return data, nil
 }
 
-// resolveTarget converts a path from .rels to a path inside the archive.
 func resolveTarget(baseDir, target string) string {
 	if strings.HasPrefix(target, "/") {
 		return strings.TrimPrefix(target, "/")

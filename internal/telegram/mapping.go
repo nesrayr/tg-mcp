@@ -10,7 +10,6 @@ import (
 	"github.com/nesrayr/tg-mcp/internal/domain"
 )
 
-// entities are the users and chats from a Telegram response, needed for names and InputPeer.
 type entities struct {
 	users    map[int64]*tg.User
 	chats    map[int64]*tg.Chat
@@ -25,7 +24,6 @@ func newEntities(users []tg.UserClass, chats []tg.ChatClass) entities {
 	}
 }
 
-// resolvedChat is a chat together with the InputPeer used to address it in the API.
 type resolvedChat struct {
 	chat domain.Chat
 	peer tg.InputPeerClass
@@ -49,7 +47,6 @@ func channelChatID(id int64) int64 {
 	return int64(peerID)
 }
 
-// peerChatID converts a PeerClass to a TDLib-format ID.
 func peerChatID(peer tg.PeerClass) (int64, bool) {
 	switch p := peer.(type) {
 	case *tg.PeerUser:
@@ -63,7 +60,6 @@ func peerChatID(peer tg.PeerClass) (int64, bool) {
 	}
 }
 
-// resolvePeer finds the chat for a PeerClass among the response entities.
 func (e entities) resolvePeer(peer tg.PeerClass) (resolvedChat, bool) {
 	switch p := peer.(type) {
 	case *tg.PeerUser:
@@ -90,7 +86,11 @@ func (e entities) resolvePeer(peer tg.PeerClass) (resolvedChat, bool) {
 			return resolvedChat{}, false
 		}
 		return resolvedChat{
-			chat: domain.Chat{ID: groupChatID(chat.ID), Kind: domain.ChatKindGroup, Title: chat.Title},
+			chat: domain.Chat{
+				ID:    groupChatID(chat.ID),
+				Kind:  domain.ChatKindGroup,
+				Title: chat.Title,
+			},
 			peer: &tg.InputPeerChat{ChatID: chat.ID},
 		}, true
 	case *tg.PeerChannel:
@@ -116,7 +116,6 @@ func (e entities) resolvePeer(peer tg.PeerClass) (resolvedChat, bool) {
 	}
 }
 
-// peerName returns the sender's display name.
 func (e entities) peerName(peer tg.PeerClass) string {
 	switch p := peer.(type) {
 	case *tg.PeerUser:
@@ -146,9 +145,8 @@ func userName(user *tg.User) string {
 	return name
 }
 
-// mapMessage converts a Telegram message to the domain model.
-// Service and empty messages are skipped (ok == false).
 func (e entities) mapMessage(chat domain.Chat, raw tg.MessageClass, maxMediaSize int64) (domain.Message, bool) {
+	// Service and empty messages are other MessageClass types and are skipped.
 	msg, ok := raw.(*tg.Message)
 	if !ok {
 		return domain.Message{}, false

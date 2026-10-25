@@ -28,10 +28,8 @@ type ClientOptions struct {
 }
 
 // NewClient creates a gotd client in which every request goes through Guard.
-//
-// Without an UpdateHandler updates are disabled: the client keeps no event stream and does not
-// call updates.getState, so to Telegram it looks inactive.
 func NewClient(opts ClientOptions) *telegram.Client {
+	// Without updates the client skips updates.getState and looks inactive to Telegram.
 	return telegram.NewClient(opts.APIID, opts.APIHash, telegram.Options{
 		SessionStorage: &session.FileStorage{Path: opts.SessionFile},
 		NoUpdates:      opts.UpdateHandler == nil,

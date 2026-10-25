@@ -48,7 +48,6 @@ type Paths struct {
 }
 
 // DefaultPaths returns paths under ~/.config/tg-mcp and ~/.cache/tg-mcp.
-// The directories can be overridden with TG_MCP_CONFIG_DIR and TG_MCP_CACHE_DIR.
 func DefaultPaths() (Paths, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -66,8 +65,7 @@ func DefaultPaths() (Paths, error) {
 	}, nil
 }
 
-// Load reads and validates the config. It refuses to work if the directory or file
-// is accessible to anyone other than the owner.
+// Load reads and validates the config, refusing files accessible to others.
 func Load(paths Paths) (Config, error) {
 	if err := CheckPrivate(paths.ConfigDir); err != nil {
 		return Config{}, err
@@ -86,8 +84,7 @@ func Load(paths Paths) (Config, error) {
 	return cfg, nil
 }
 
-// Read reads the config without permission checks or validation. setup needs it to keep
-// allowed_chats when overwriting the keys, even if the old config is invalid.
+// Read reads the config without permission checks or validation.
 func Read(paths Paths) (Config, error) {
 	data, err := os.ReadFile(paths.ConfigFile)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -101,6 +98,7 @@ func Read(paths Paths) (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("%w: parse %s: %v", ErrInvalidConfig, paths.ConfigFile, err)
 	}
+	// Not validated: setup keeps allowed_chats even from an invalid old config.
 	return cfg, nil
 }
 

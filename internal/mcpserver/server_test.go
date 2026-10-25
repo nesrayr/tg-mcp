@@ -49,18 +49,28 @@ func newFixture(t *testing.T) fixture {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = serverSession.Close() })
 
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "test-client",
+		Version: "1",
+	}, nil)
 	session, err := client.Connect(ctx, clientTransport, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = session.Close() })
 
-	return fixture{reader: reader, session: session, mediaDir: mediaDir}
+	return fixture{
+		reader:   reader,
+		session:  session,
+		mediaDir: mediaDir,
+	}
 }
 
 func (f fixture) call(t *testing.T, name string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
 
-	result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
+	result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      name,
+		Arguments: args,
+	})
 	require.NoError(t, err)
 	return result
 }
@@ -109,15 +119,37 @@ func Test_ListChats(t *testing.T) {
 
 		f := newFixture(t)
 		f.reader.EXPECT().ListChats(gomock.Any(), true).Return([]domain.Chat{
-			{ID: -1001, Kind: domain.ChatKindChannel, Title: "Go\u202eNews", Username: "gonews", UnreadCount: 4, LastMessageAt: testTime},
-			{ID: 42, Kind: domain.ChatKindPrivate, Title: "Mom"},
+			{
+				ID:            -1001,
+				Kind:          domain.ChatKindChannel,
+				Title:         "Go\u202eNews",
+				Username:      "gonews",
+				UnreadCount:   4,
+				LastMessageAt: testTime,
+			},
+			{
+				ID:    42,
+				Kind:  domain.ChatKindPrivate,
+				Title: "Mom",
+			},
 		}, nil)
 
 		out := decodeText[ListChatsOutput](t, f.call(t, "list_chats", map[string]any{"unread_only": true}), 0)
 		require.Equal(t, untrustedNotice, out.Notice)
 		require.Equal(t, []ChatDTO{
-			{ID: -1001, Kind: "channel", Title: "GoNews", Username: "gonews", UnreadCount: 4, LastMessageAt: "2026-10-21T12:00:00Z"},
-			{ID: 42, Kind: "private", Title: "Mom"},
+			{
+				ID:            -1001,
+				Kind:          "channel",
+				Title:         "GoNews",
+				Username:      "gonews",
+				UnreadCount:   4,
+				LastMessageAt: "2026-10-21T12:00:00Z",
+			},
+			{
+				ID:    42,
+				Kind:  "private",
+				Title: "Mom",
+			},
 		}, out.Chats)
 		require.Empty(t, out.Hint)
 	})
@@ -151,13 +183,38 @@ func Test_ReadMessages(t *testing.T) {
 		t.Parallel()
 
 		f := newFixture(t)
-		f.reader.EXPECT().History(gomock.Any(), domain.ChatRef{Username: "mama"}, telegram.HistoryParams{Limit: 5, BeforeID: 100, AfterID: 10}).
+		f.reader.EXPECT().History(gomock.Any(), domain.ChatRef{Username: "mama"}, telegram.HistoryParams{
+			Limit:    5,
+			BeforeID: 100,
+			AfterID:  10,
+		}).
 			Return([]domain.Message{
-				{ID: 11, ChatID: 42, Date: testTime, SenderID: 42, Sender: "Mom", Text: "Hi\u200b, check out\x07 the file", Forwarded: true},
 				{
-					ID: 12, ChatID: 42, Date: testTime.Add(time.Minute), EditedAt: testTime.Add(2 * time.Minute), SenderID: 1, Sender: "Me",
-					Outgoing: true, Text: "ok", ReplyToID: 11,
-					Media: &domain.Media{Kind: domain.MediaKindPDF, FileName: "report\u202e.pdf", MimeType: "application/pdf\u202e", Size: 3, Downloadable: true},
+					ID:        11,
+					ChatID:    42,
+					Date:      testTime,
+					SenderID:  42,
+					Sender:    "Mom",
+					Text:      "Hi\u200b, check out\x07 the file",
+					Forwarded: true,
+				},
+				{
+					ID:        12,
+					ChatID:    42,
+					Date:      testTime.Add(time.Minute),
+					EditedAt:  testTime.Add(2 * time.Minute),
+					SenderID:  1,
+					Sender:    "Me",
+					Outgoing:  true,
+					Text:      "ok",
+					ReplyToID: 11,
+					Media: &domain.Media{
+						Kind:         domain.MediaKindPDF,
+						FileName:     "report\u202e.pdf",
+						MimeType:     "application/pdf\u202e",
+						Size:         3,
+						Downloadable: true,
+					},
 				},
 			}, nil)
 
@@ -165,11 +222,32 @@ func Test_ReadMessages(t *testing.T) {
 		require.Equal(t, MessagesOutput{
 			Notice: untrustedNotice,
 			Messages: []MessageDTO{
-				{ID: 11, ChatID: 42, Date: "2026-10-21T12:00:00Z", From: "Mom", FromID: 42, Forwarded: true, Text: "Hi, check out the file"},
 				{
-					ID: 12, ChatID: 42, Date: "2026-10-21T12:01:00Z", Edited: true, From: "me (account owner)", FromID: 1,
-					Outgoing: true, ReplyTo: 11, Text: "ok",
-					Media: &MediaDTO{Kind: "pdf", FileName: "report.pdf", MimeType: "application/pdf", Size: 3, Downloadable: true},
+					ID:        11,
+					ChatID:    42,
+					Date:      "2026-10-21T12:00:00Z",
+					From:      "Mom",
+					FromID:    42,
+					Forwarded: true,
+					Text:      "Hi, check out the file",
+				},
+				{
+					ID:       12,
+					ChatID:   42,
+					Date:     "2026-10-21T12:01:00Z",
+					Edited:   true,
+					From:     "me (account owner)",
+					FromID:   1,
+					Outgoing: true,
+					ReplyTo:  11,
+					Text:     "ok",
+					Media: &MediaDTO{
+						Kind:         "pdf",
+						FileName:     "report.pdf",
+						MimeType:     "application/pdf",
+						Size:         3,
+						Downloadable: true,
+					},
 				},
 			},
 		}, out)
@@ -181,7 +259,12 @@ func Test_ReadMessages(t *testing.T) {
 		f := newFixture(t)
 		messages := make([]domain.Message, 20)
 		for i := range messages {
-			messages[i] = domain.Message{ID: i + 1, ChatID: 42, Date: testTime, Text: strings.Repeat("é", maxTextRunes)}
+			messages[i] = domain.Message{
+				ID:     i + 1,
+				ChatID: 42,
+				Date:   testTime,
+				Text:   strings.Repeat("é", maxTextRunes),
+			}
 		}
 		f.reader.EXPECT().History(gomock.Any(), domain.ChatRef{ID: 42}, telegram.HistoryParams{}).Return(messages, nil)
 
@@ -308,8 +391,17 @@ func Test_GetMedia(t *testing.T) {
 		t.Parallel()
 
 		f := newFixture(t)
-		photo := domain.Media{Kind: domain.MediaKindPhoto, MimeType: "image/jpeg", Size: 4, Downloadable: true}
-		expectDownload(f, domain.ChatRef{ID: 42}, 12, domain.Attachment{ChatID: 42, MessageID: 12, Media: photo}, []byte("jpeg"))
+		photo := domain.Media{
+			Kind:         domain.MediaKindPhoto,
+			MimeType:     "image/jpeg",
+			Size:         4,
+			Downloadable: true,
+		}
+		expectDownload(f, domain.ChatRef{ID: 42}, 12, domain.Attachment{
+			ChatID:    42,
+			MessageID: 12,
+			Media:     photo,
+		}, []byte("jpeg"))
 
 		result := f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 12})
 		require.False(t, result.IsError)
@@ -330,8 +422,18 @@ func Test_GetMedia(t *testing.T) {
 		t.Parallel()
 
 		f := newFixture(t)
-		pdf := domain.Media{Kind: domain.MediaKindPDF, FileName: "../../etc/passwd.pdf", MimeType: "application/pdf", Size: 3, Downloadable: true}
-		expectDownload(f, domain.ChatRef{Username: "gonews"}, 7, domain.Attachment{ChatID: -1001, MessageID: 7, Media: pdf}, []byte("pdf"))
+		pdf := domain.Media{
+			Kind:         domain.MediaKindPDF,
+			FileName:     "../../etc/passwd.pdf",
+			MimeType:     "application/pdf",
+			Size:         3,
+			Downloadable: true,
+		}
+		expectDownload(f, domain.ChatRef{Username: "gonews"}, 7, domain.Attachment{
+			ChatID:    -1001,
+			MessageID: 7,
+			Media:     pdf,
+		}, []byte("pdf"))
 
 		result := f.call(t, "get_media", map[string]any{"chat": "@gonews", "message_id": 7})
 		require.False(t, result.IsError)
@@ -358,8 +460,17 @@ func Test_GetMedia(t *testing.T) {
 		t.Parallel()
 
 		f := newFixture(t)
-		image := domain.Media{Kind: domain.MediaKindImage, MimeType: "image/png", Size: maxInlineImage + 1, Downloadable: true}
-		expectDownload(f, domain.ChatRef{ID: 42}, 3, domain.Attachment{ChatID: 42, MessageID: 3, Media: image}, make([]byte, maxInlineImage+1))
+		image := domain.Media{
+			Kind:         domain.MediaKindImage,
+			MimeType:     "image/png",
+			Size:         maxInlineImage + 1,
+			Downloadable: true,
+		}
+		expectDownload(f, domain.ChatRef{ID: 42}, 3, domain.Attachment{
+			ChatID:    42,
+			MessageID: 3,
+			Media:     image,
+		}, make([]byte, maxInlineImage+1))
 
 		out := decodeText[MediaOutput](t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 3}), 0)
 		require.False(t, out.Inline)
@@ -370,8 +481,18 @@ func Test_GetMedia(t *testing.T) {
 		t.Parallel()
 
 		f := newFixture(t)
-		pdf := domain.Media{Kind: domain.MediaKindPDF, FileName: "scan.pdf", MimeType: "application/octet-stream", Size: 3, Downloadable: true}
-		expectDownload(f, domain.ChatRef{ID: 42}, 8, domain.Attachment{ChatID: 42, MessageID: 8, Media: pdf}, []byte("pdf"))
+		pdf := domain.Media{
+			Kind:         domain.MediaKindPDF,
+			FileName:     "scan.pdf",
+			MimeType:     "application/octet-stream",
+			Size:         3,
+			Downloadable: true,
+		}
+		expectDownload(f, domain.ChatRef{ID: 42}, 8, domain.Attachment{
+			ChatID:    42,
+			MessageID: 8,
+			Media:     pdf,
+		}, []byte("pdf"))
 
 		out := decodeText[MediaOutput](t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 8}), 0)
 		require.Equal(t, filepath.Join(f.mediaDir, "42_8.pdf"), out.Path)
@@ -383,8 +504,17 @@ func Test_GetMedia(t *testing.T) {
 		f := newFixture(t)
 		document := buildDocx(t, `<w:p><w:r><w:t>Classes on Tuesday</w:t></w:r></w:p>`+
 			`<w:tbl><w:tr><w:tc><w:p><w:r><w:t>16:30</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Smith`+"\u202e"+`</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`)
-		media := domain.Media{Kind: domain.MediaKindDOCX, FileName: "Classes.docx", Size: int64(len(document)), Downloadable: true}
-		expectDownload(f, domain.ChatRef{ID: 42}, 4, domain.Attachment{ChatID: 42, MessageID: 4, Media: media}, document)
+		media := domain.Media{
+			Kind:         domain.MediaKindDOCX,
+			FileName:     "Classes.docx",
+			Size:         int64(len(document)),
+			Downloadable: true,
+		}
+		expectDownload(f, domain.ChatRef{ID: 42}, 4, domain.Attachment{
+			ChatID:    42,
+			MessageID: 4,
+			Media:     media,
+		}, document)
 
 		out := decodeText[DocumentOutput](t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 4}), 0)
 		require.Equal(t, "Classes on Tuesday\n| 16:30 | Smith |", out.Text)
@@ -399,8 +529,17 @@ func Test_GetMedia(t *testing.T) {
 
 		f := newFixture(t)
 		book := buildXlsx(t, `<row r="1"><c r="A1" t="inlineStr"><is><t>Fri</t></is></c><c r="B1" t="inlineStr"><is><t>Philosophy</t></is></c></row>`)
-		media := domain.Media{Kind: domain.MediaKindXLSX, FileName: "Classes.xlsx", Size: int64(len(book)), Downloadable: true}
-		expectDownload(f, domain.ChatRef{ID: 42}, 5, domain.Attachment{ChatID: 42, MessageID: 5, Media: media}, book)
+		media := domain.Media{
+			Kind:         domain.MediaKindXLSX,
+			FileName:     "Classes.xlsx",
+			Size:         int64(len(book)),
+			Downloadable: true,
+		}
+		expectDownload(f, domain.ChatRef{ID: 42}, 5, domain.Attachment{
+			ChatID:    42,
+			MessageID: 5,
+			Media:     media,
+		}, book)
 
 		out := decodeText[DocumentOutput](t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 5}), 0)
 		require.Equal(t, "## Sheet: Sheet1\n1 | Fri | Philosophy |", out.Text)
@@ -411,8 +550,17 @@ func Test_GetMedia(t *testing.T) {
 		t.Parallel()
 
 		f := newFixture(t)
-		media := domain.Media{Kind: domain.MediaKindDOCX, FileName: "broken.docx", Size: 4, Downloadable: true}
-		expectDownload(f, domain.ChatRef{ID: 42}, 6, domain.Attachment{ChatID: 42, MessageID: 6, Media: media}, []byte("nope"))
+		media := domain.Media{
+			Kind:         domain.MediaKindDOCX,
+			FileName:     "broken.docx",
+			Size:         4,
+			Downloadable: true,
+		}
+		expectDownload(f, domain.ChatRef{ID: 42}, 6, domain.Attachment{
+			ChatID:    42,
+			MessageID: 6,
+			Media:     media,
+		}, []byte("nope"))
 
 		require.Contains(t, errorText(t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 6})), "invalid office document")
 	})
@@ -422,7 +570,10 @@ func Test_GetMedia(t *testing.T) {
 
 		f := newFixture(t)
 		f.reader.EXPECT().DownloadMedia(gomock.Any(), domain.ChatRef{ID: 42}, 9, gomock.Any()).
-			Return(domain.Attachment{ChatID: 42, MessageID: 9}, telegram.ErrMediaNotDownloadable)
+			Return(domain.Attachment{
+				ChatID:    42,
+				MessageID: 9,
+			}, telegram.ErrMediaNotDownloadable)
 
 		require.Contains(t, errorText(t, f.call(t, "get_media", map[string]any{"chat": "42", "message_id": 9})), "not downloadable")
 	})

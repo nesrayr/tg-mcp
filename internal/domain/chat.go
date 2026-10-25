@@ -19,10 +19,7 @@ const (
 	ChatKindChannel ChatKind = "channel"
 )
 
-// Chat is a chat available for reading.
-//
-// ID uses the TDLib/Bot API format: users are positive,
-// basic groups are negative, channels and supergroups have the -100 prefix.
+// Chat is a chat available for reading, with ID in the TDLib/Bot API format.
 type Chat struct {
 	ID            int64
 	Kind          ChatKind
@@ -43,13 +40,13 @@ var ErrInvalidChatRef = errors.New("invalid chat reference")
 var usernamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{3,31}$`)
 
 // ParseChatRef parses a chat reference: "123", "-100123" or "@username".
-// The username is lowercased because Telegram usernames are case-insensitive.
 func ParseChatRef(raw string) (ChatRef, error) {
 	value := strings.TrimSpace(raw)
 	if username, ok := strings.CutPrefix(value, "@"); ok {
 		if !usernamePattern.MatchString(username) {
 			return ChatRef{}, fmt.Errorf("%w: %q", ErrInvalidChatRef, raw)
 		}
+		// Telegram usernames are case-insensitive.
 		return ChatRef{Username: strings.ToLower(username)}, nil
 	}
 

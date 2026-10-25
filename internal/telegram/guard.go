@@ -13,8 +13,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-// ErrMethodNotAllowed is returned when a request is not covered by the allowed policy.
-// The request does not reach Telegram in this case.
+// ErrMethodNotAllowed is returned for a request outside the policy; such a request never reaches Telegram.
 var ErrMethodNotAllowed = errors.New("telegram method is not allowed")
 
 // MethodNotAllowedError specifies which method was blocked.
@@ -39,8 +38,7 @@ type Policy struct {
 	allowed map[uint32]struct{}
 }
 
-// NewPolicy builds a policy from zero values of the allowed requests,
-// e.g. &tg.MessagesGetHistoryRequest{}.
+// NewPolicy builds a policy from zero values of the allowed requests, e.g. &tg.MessagesGetHistoryRequest{}.
 func NewPolicy(requests ...typedRequest) Policy {
 	allowed := make(map[uint32]struct{}, len(requests))
 	for _, request := range requests {
@@ -81,10 +79,9 @@ func (p Policy) Allows(input bin.Encoder) bool {
 	return ok
 }
 
-// ReadOnlyPolicy lists the methods the server needs to read chats and download attachments.
-// None of them changes the account state: they do not send messages,
-// do not mark anything as read and do not change the "online" status.
+// ReadOnlyPolicy lists the read methods the server needs; none of them changes the account state.
 var ReadOnlyPolicy = NewPolicy(
+	// None of these sends messages, marks anything as read or changes the "online" status.
 	// Session check on client start (users.getUsers for self).
 	&tg.UsersGetUsersRequest{},
 	// Allowlisted chat lookup and unread counters.
@@ -102,9 +99,9 @@ var ReadOnlyPolicy = NewPolicy(
 	&tg.AuthExportAuthorizationRequest{},
 )
 
-// LoginPolicy is used only by the login command: it adds login methods to the read methods
-// for QR code and Telegram code login with a 2FA password. Signing up a new account is not allowed.
+// LoginPolicy adds QR, code and 2FA login methods to ReadOnlyPolicy for the login command only.
 var LoginPolicy = ReadOnlyPolicy.With(
+	// Signing up a new account is deliberately not allowed.
 	&tg.AuthExportLoginTokenRequest{},
 	&tg.AuthImportLoginTokenRequest{},
 	&tg.AuthSendCodeRequest{},
@@ -135,7 +132,6 @@ func methodName(input bin.Encoder) string {
 	return tlName(request.TypeID())
 }
 
-// tlName returns the TL method name without the constructor hash: "messages.getHistory".
 func tlName(id uint32) string {
 	name, ok := typeNames()[id]
 	if !ok {

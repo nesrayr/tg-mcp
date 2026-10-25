@@ -62,61 +62,134 @@ func Test_LoginPolicy_Methods(t *testing.T) {
 func Test_Guard_BlocksWriteMethods(t *testing.T) {
 	t.Parallel()
 
-	peer := &tg.InputPeerUser{UserID: 42, AccessHash: 1}
+	peer := &tg.InputPeerUser{
+		UserID:     42,
+		AccessHash: 1,
+	}
 
 	tests := []struct {
 		name   string
 		method string
 		call   func(ctx context.Context, api *tg.Client) error
 	}{
-		{name: "send message", method: "messages.sendMessage", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{Peer: peer, Message: "hi", RandomID: 1})
-			return err
-		}},
-		{name: "forward messages", method: "messages.forwardMessages", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.MessagesForwardMessages(ctx, &tg.MessagesForwardMessagesRequest{FromPeer: peer, ToPeer: peer, ID: []int{1}, RandomID: []int64{1}})
-			return err
-		}},
-		{name: "delete messages", method: "messages.deleteMessages", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{ID: []int{1}})
-			return err
-		}},
-		{name: "mark history read", method: "messages.readHistory", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.MessagesReadHistory(ctx, &tg.MessagesReadHistoryRequest{Peer: peer, MaxID: 1})
-			return err
-		}},
-		{name: "mark channel read", method: "channels.readHistory", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.ChannelsReadHistory(ctx, &tg.ChannelsReadHistoryRequest{Channel: &tg.InputChannel{ChannelID: 1}, MaxID: 1})
-			return err
-		}},
-		{name: "typing status", method: "messages.setTyping", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.MessagesSetTyping(ctx, &tg.MessagesSetTypingRequest{Peer: peer, Action: &tg.SendMessageTypingAction{}})
-			return err
-		}},
-		{name: "online status", method: "account.updateStatus", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.AccountUpdateStatus(ctx, false)
-			return err
-		}},
-		{name: "join channel", method: "channels.joinChannel", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.ChannelsJoinChannel(ctx, &tg.InputChannel{ChannelID: 1})
-			return err
-		}},
-		{name: "global search", method: "messages.searchGlobal", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.MessagesSearchGlobal(ctx, &tg.MessagesSearchGlobalRequest{Q: "x", Filter: &tg.InputMessagesFilterEmpty{}, OffsetPeer: &tg.InputPeerEmpty{}})
-			return err
-		}},
-		{name: "log out", method: "auth.logOut", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.AuthLogOut(ctx)
-			return err
-		}},
-		{name: "list authorizations", method: "account.getAuthorizations", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.AccountGetAuthorizations(ctx)
-			return err
-		}},
-		{name: "updates state", method: "updates.getState", call: func(ctx context.Context, api *tg.Client) error {
-			_, err := api.UpdatesGetState(ctx)
-			return err
-		}},
+		{
+			name:   "send message",
+			method: "messages.sendMessage",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+					Peer:     peer,
+					Message:  "hi",
+					RandomID: 1,
+				})
+				return err
+			},
+		},
+		{
+			name:   "forward messages",
+			method: "messages.forwardMessages",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.MessagesForwardMessages(ctx, &tg.MessagesForwardMessagesRequest{
+					FromPeer: peer,
+					ToPeer:   peer,
+					ID:       []int{1},
+					RandomID: []int64{1},
+				})
+				return err
+			},
+		},
+		{
+			name:   "delete messages",
+			method: "messages.deleteMessages",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{ID: []int{1}})
+				return err
+			},
+		},
+		{
+			name:   "mark history read",
+			method: "messages.readHistory",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.MessagesReadHistory(ctx, &tg.MessagesReadHistoryRequest{
+					Peer:  peer,
+					MaxID: 1,
+				})
+				return err
+			},
+		},
+		{
+			name:   "mark channel read",
+			method: "channels.readHistory",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.ChannelsReadHistory(ctx, &tg.ChannelsReadHistoryRequest{
+					Channel: &tg.InputChannel{ChannelID: 1},
+					MaxID:   1,
+				})
+				return err
+			},
+		},
+		{
+			name:   "typing status",
+			method: "messages.setTyping",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.MessagesSetTyping(ctx, &tg.MessagesSetTypingRequest{
+					Peer:   peer,
+					Action: &tg.SendMessageTypingAction{},
+				})
+				return err
+			},
+		},
+		{
+			name:   "online status",
+			method: "account.updateStatus",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.AccountUpdateStatus(ctx, false)
+				return err
+			},
+		},
+		{
+			name:   "join channel",
+			method: "channels.joinChannel",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.ChannelsJoinChannel(ctx, &tg.InputChannel{ChannelID: 1})
+				return err
+			},
+		},
+		{
+			name:   "global search",
+			method: "messages.searchGlobal",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.MessagesSearchGlobal(ctx, &tg.MessagesSearchGlobalRequest{
+					Q:          "x",
+					Filter:     &tg.InputMessagesFilterEmpty{},
+					OffsetPeer: &tg.InputPeerEmpty{},
+				})
+				return err
+			},
+		},
+		{
+			name:   "log out",
+			method: "auth.logOut",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.AuthLogOut(ctx)
+				return err
+			},
+		},
+		{
+			name:   "list authorizations",
+			method: "account.getAuthorizations",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.AccountGetAuthorizations(ctx)
+				return err
+			},
+		},
+		{
+			name:   "updates state",
+			method: "updates.getState",
+			call: func(ctx context.Context, api *tg.Client) error {
+				_, err := api.UpdatesGetState(ctx)
+				return err
+			},
+		},
 	}
 
 	for _, tt := range tests {

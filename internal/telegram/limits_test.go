@@ -42,12 +42,43 @@ func Test_FloodWait(t *testing.T) {
 		wantCalls int
 		wantWaits []time.Duration
 	}{
-		{name: "success without wait", wantCalls: 1},
-		{name: "retries after short flood wait", errs: []error{floodErr("3")}, wantCalls: 2, wantWaits: []time.Duration{3 * time.Second}},
-		{name: "long flood wait is returned", errs: []error{floodErr("120")}, wantFlood: true, wantCalls: 1},
-		{name: "retries are limited", errs: []error{floodErr("1"), floodErr("1"), floodErr("1")}, wantFlood: true, wantCalls: 3, wantWaits: []time.Duration{time.Second, time.Second}},
-		{name: "other error is not retried", errs: []error{otherErr}, wantErr: otherErr, wantCalls: 1},
-		{name: "cancelled wait stops retry", errs: []error{floodErr("5")}, waitErr: context.Canceled, wantErr: context.Canceled, wantCalls: 1, wantWaits: []time.Duration{5 * time.Second}},
+		{
+			name:      "success without wait",
+			wantCalls: 1,
+		},
+		{
+			name:      "retries after short flood wait",
+			errs:      []error{floodErr("3")},
+			wantCalls: 2,
+			wantWaits: []time.Duration{3 * time.Second},
+		},
+		{
+			name:      "long flood wait is returned",
+			errs:      []error{floodErr("120")},
+			wantFlood: true,
+			wantCalls: 1,
+		},
+		{
+			name:      "retries are limited",
+			errs:      []error{floodErr("1"), floodErr("1"), floodErr("1")},
+			wantFlood: true,
+			wantCalls: 3,
+			wantWaits: []time.Duration{time.Second, time.Second},
+		},
+		{
+			name:      "other error is not retried",
+			errs:      []error{otherErr},
+			wantErr:   otherErr,
+			wantCalls: 1,
+		},
+		{
+			name:      "cancelled wait stops retry",
+			errs:      []error{floodErr("5")},
+			waitErr:   context.Canceled,
+			wantErr:   context.Canceled,
+			wantCalls: 1,
+			wantWaits: []time.Duration{5 * time.Second},
+		},
 	}
 
 	for _, tt := range tests {

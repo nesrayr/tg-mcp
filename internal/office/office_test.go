@@ -94,11 +94,20 @@ func Test_DocxText_Errors(t *testing.T) {
 		name string
 		data func(t *testing.T) []byte
 	}{
-		{name: "not a zip", data: func(*testing.T) []byte { return []byte("plain text") }},
-		{name: "no document part", data: func(t *testing.T) []byte { return buildZip(t, map[string]string{"word/other.xml": "<x/>"}) }},
-		{name: "broken xml", data: func(t *testing.T) []byte {
-			return buildZip(t, map[string]string{"word/document.xml": "<w:document><w:body>"})
-		}},
+		{
+			name: "not a zip",
+			data: func(*testing.T) []byte { return []byte("plain text") },
+		},
+		{
+			name: "no document part",
+			data: func(t *testing.T) []byte { return buildZip(t, map[string]string{"word/other.xml": "<x/>"}) },
+		},
+		{
+			name: "broken xml",
+			data: func(t *testing.T) []byte {
+				return buildZip(t, map[string]string{"word/document.xml": "<w:document><w:body>"})
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -258,15 +267,42 @@ func Test_formatCodeKind(t *testing.T) {
 		code string
 		want dateKind
 	}{
-		{code: "dd.mm.yyyy", want: dateOnly},
-		{code: "h:mm", want: timeOnly},
-		{code: "[h]:mm:ss", want: timeOnly},
-		{code: "dd/mm/yy hh:mm", want: dateTime},
-		{code: "mmm", want: dateOnly},
-		{code: "0.00", want: notDate},
-		{code: `"day" 0`, want: notDate},
-		{code: `[Red]0.00`, want: notDate},
-		{code: `\d0`, want: notDate},
+		{
+			code: "dd.mm.yyyy",
+			want: dateOnly,
+		},
+		{
+			code: "h:mm",
+			want: timeOnly,
+		},
+		{
+			code: "[h]:mm:ss",
+			want: timeOnly,
+		},
+		{
+			code: "dd/mm/yy hh:mm",
+			want: dateTime,
+		},
+		{
+			code: "mmm",
+			want: dateOnly,
+		},
+		{
+			code: "0.00",
+			want: notDate,
+		},
+		{
+			code: `"day" 0`,
+			want: notDate,
+		},
+		{
+			code: `[Red]0.00`,
+			want: notDate,
+		},
+		{
+			code: `\d0`,
+			want: notDate,
+		},
 	}
 
 	for _, tt := range tests {
@@ -287,10 +323,30 @@ func Test_formatSerial(t *testing.T) {
 		kind  dateKind
 		want  string
 	}{
-		{name: "date", value: 46316, kind: dateOnly, want: "2026-10-21"},
-		{name: "time", value: 0.4861111111, kind: timeOnly, want: "11:40"},
-		{name: "duration over a day", value: 1.5, kind: timeOnly, want: "36:00"},
-		{name: "date and time", value: 46316.6875, kind: dateTime, want: "2026-10-21 16:30"},
+		{
+			name:  "date",
+			value: 46316,
+			kind:  dateOnly,
+			want:  "2026-10-21",
+		},
+		{
+			name:  "time",
+			value: 0.4861111111,
+			kind:  timeOnly,
+			want:  "11:40",
+		},
+		{
+			name:  "duration over a day",
+			value: 1.5,
+			kind:  timeOnly,
+			want:  "36:00",
+		},
+		{
+			name:  "date and time",
+			value: 46316.6875,
+			kind:  dateTime,
+			want:  "2026-10-21 16:30",
+		},
 	}
 
 	for _, tt := range tests {
@@ -310,11 +366,34 @@ func Test_parseRef(t *testing.T) {
 		want   cellPos
 		wantOK bool
 	}{
-		{ref: "A1", want: cellPos{row: 1, col: 1}, wantOK: true},
-		{ref: "$AB$12", want: cellPos{row: 12, col: 28}, wantOK: true},
-		{ref: "12", wantOK: false},
-		{ref: "A0", wantOK: false},
-		{ref: "A", wantOK: false},
+		{
+			ref: "A1",
+			want: cellPos{
+				row: 1,
+				col: 1,
+			},
+			wantOK: true,
+		},
+		{
+			ref: "$AB$12",
+			want: cellPos{
+				row: 12,
+				col: 28,
+			},
+			wantOK: true,
+		},
+		{
+			ref:    "12",
+			wantOK: false,
+		},
+		{
+			ref:    "A0",
+			wantOK: false,
+		},
+		{
+			ref:    "A",
+			wantOK: false,
+		},
 	}
 
 	for _, tt := range tests {

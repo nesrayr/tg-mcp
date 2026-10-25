@@ -23,13 +23,41 @@ func Test_NormalizePhone(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{name: "plain", raw: "+79991234567", want: "+79991234567"},
-		{name: "with spaces and dashes", raw: " +7 (999) 123-45-67 ", want: "+79991234567"},
-		{name: "without plus", raw: "79991234567", wantErr: true},
-		{name: "local format", raw: "89991234567", wantErr: true},
-		{name: "letters", raw: "+7999abc4567", wantErr: true},
-		{name: "too short", raw: "+12345", wantErr: true},
-		{name: "too long", raw: "+1234567890123456", wantErr: true},
+		{
+			name: "plain",
+			raw:  "+79991234567",
+			want: "+79991234567",
+		},
+		{
+			name: "with spaces and dashes",
+			raw:  " +7 (999) 123-45-67 ",
+			want: "+79991234567",
+		},
+		{
+			name:    "without plus",
+			raw:     "79991234567",
+			wantErr: true,
+		},
+		{
+			name:    "local format",
+			raw:     "89991234567",
+			wantErr: true,
+		},
+		{
+			name:    "letters",
+			raw:     "+7999abc4567",
+			wantErr: true,
+		},
+		{
+			name:    "too short",
+			raw:     "+12345",
+			wantErr: true,
+		},
+		{
+			name:    "too long",
+			raw:     "+1234567890123456",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

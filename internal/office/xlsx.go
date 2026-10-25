@@ -32,10 +32,7 @@ const (
 
 const relationshipsNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
-// XlsxText returns the contents of an Excel workbook: for each sheet, a header and rows
-// like "5 | cell | cell |" (row number as in Excel). Merged cells
-// are expanded: the value is repeated in every row of the merge, while adjacent cells
-// of the same merge are printed once per row. Dates and times are formatted by cell style.
+// XlsxText returns the sheets of an Excel workbook as "5 | cell | cell |" rows.
 func XlsxText(data []byte) (string, error) {
 	arc, err := openArchive(data)
 	if err != nil {
@@ -80,7 +77,6 @@ func XlsxText(data []byte) (string, error) {
 	return text, nil
 }
 
-// limitedText collects text up to limit bytes and silently drops the rest.
 type limitedText struct {
 	b     strings.Builder
 	limit int
@@ -206,7 +202,6 @@ const (
 	dateTime
 )
 
-// readDateStyles reports for each cell style index whether it is a date/time.
 func readDateStyles(arc *archive) ([]dateKind, error) {
 	data, err := arc.read("xl/styles.xml")
 	if err != nil || data == nil {
@@ -258,11 +253,10 @@ func numFmtKind(id int, custom map[int]string) dateKind {
 	return formatCodeKind(code)
 }
 
-// formatCodeKind parses a custom number format: quoted literals, escaped
-// characters and [...] sections (colors, conditions) are ignored.
 func formatCodeKind(code string) dateKind {
 	var tokens strings.Builder
 	inQuote, inBracket := false, false
+	// Quoted literals, escaped characters and [...] sections (colors, conditions) carry no date tokens.
 	for i := 0; i < len(code); i++ {
 		c := code[i]
 		switch {
@@ -322,9 +316,17 @@ func formatSerial(value float64, kind dateKind) string {
 	}
 }
 
-type cellPos struct{ row, col int }
+type cellPos struct {
+	row int
+	col int
+}
 
-type mergeRange struct{ top, left, bottom, right int }
+type mergeRange struct {
+	top    int
+	left   int
+	bottom int
+	right  int
+}
 
 type grid struct {
 	cells  map[cellPos]string
@@ -532,7 +534,6 @@ func (g *grid) render(out *limitedText) {
 	}
 }
 
-// writeCell writes a cell value on one line, replacing line breaks with " / ".
 func writeCell(out *limitedText, value string) {
 	for !out.full {
 		line, rest, found := strings.Cut(value, "\n")
@@ -545,7 +546,6 @@ func writeCell(out *limitedText, value string) {
 	}
 }
 
-// parseRef parses a cell reference like "AB12".
 func parseRef(ref string) (cellPos, bool) {
 	ref = strings.ReplaceAll(ref, "$", "")
 	i := 0
@@ -558,7 +558,10 @@ func parseRef(ref string) (cellPos, bool) {
 	if i == 0 || err != nil || row < 1 || col > 16384 {
 		return cellPos{}, false
 	}
-	return cellPos{row: row, col: col}, true
+	return cellPos{
+		row: row,
+		col: col,
+	}, true
 }
 
 func parseRange(ref string) (mergeRange, bool) {
@@ -571,5 +574,10 @@ func parseRange(ref string) (mergeRange, bool) {
 	if !okA || !okB {
 		return mergeRange{}, false
 	}
-	return mergeRange{top: min(a.row, b.row), left: min(a.col, b.col), bottom: max(a.row, b.row), right: max(a.col, b.col)}, true
+	return mergeRange{
+		top:    min(a.row, b.row),
+		left:   min(a.col, b.col),
+		bottom: max(a.row, b.row),
+		right:  max(a.col, b.col),
+	}, true
 }

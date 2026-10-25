@@ -31,7 +31,11 @@ func Test_SaveLoad(t *testing.T) {
 		t.Parallel()
 
 		paths := testPaths(t)
-		cfg := Config{APIID: 12345, APIHash: testAPIHash, AllowedChats: []string{"@durov", "-1001234567890"}}
+		cfg := Config{
+			APIID:        12345,
+			APIHash:      testAPIHash,
+			AllowedChats: []string{"@durov", "-1001234567890"},
+		}
 
 		require.NoError(t, Save(paths, cfg))
 
@@ -54,7 +58,10 @@ func Test_SaveLoad(t *testing.T) {
 		paths := testPaths(t)
 		require.NoError(t, os.MkdirAll(paths.ConfigDir, 0o755))
 
-		require.NoError(t, Save(paths, Config{APIID: 1, APIHash: testAPIHash}))
+		require.NoError(t, Save(paths, Config{
+			APIID:   1,
+			APIHash: testAPIHash,
+		}))
 
 		dirInfo, err := os.Stat(paths.ConfigDir)
 		require.NoError(t, err)
@@ -66,7 +73,10 @@ func Test_SaveLoad(t *testing.T) {
 
 		paths := testPaths(t)
 
-		err := Save(paths, Config{APIID: 1, APIHash: "short"})
+		err := Save(paths, Config{
+			APIID:   1,
+			APIHash: "short",
+		})
 		require.ErrorIs(t, err, ErrInvalidConfig)
 		require.NoFileExists(t, paths.ConfigFile)
 	})
@@ -86,7 +96,10 @@ func Test_Load(t *testing.T) {
 		t.Parallel()
 
 		paths := testPaths(t)
-		require.NoError(t, Save(paths, Config{APIID: 1, APIHash: testAPIHash}))
+		require.NoError(t, Save(paths, Config{
+			APIID:   1,
+			APIHash: testAPIHash,
+		}))
 		require.NoError(t, os.Chmod(paths.ConfigFile, 0o644))
 
 		_, err := Load(paths)
@@ -97,7 +110,10 @@ func Test_Load(t *testing.T) {
 		t.Parallel()
 
 		paths := testPaths(t)
-		require.NoError(t, Save(paths, Config{APIID: 1, APIHash: testAPIHash}))
+		require.NoError(t, Save(paths, Config{
+			APIID:   1,
+			APIHash: testAPIHash,
+		}))
 		require.NoError(t, os.Chmod(paths.ConfigDir, 0o755))
 
 		_, err := Load(paths)
@@ -124,13 +140,59 @@ func Test_Config_Validate(t *testing.T) {
 		cfg     Config
 		wantErr bool
 	}{
-		{name: "valid without allowlist", cfg: Config{APIID: 1, APIHash: testAPIHash}},
-		{name: "valid with allowlist", cfg: Config{APIID: 1, APIHash: testAPIHash, AllowedChats: []string{"@durov", "42"}}},
-		{name: "zero api id", cfg: Config{APIHash: testAPIHash}, wantErr: true},
-		{name: "negative api id", cfg: Config{APIID: -1, APIHash: testAPIHash}, wantErr: true},
-		{name: "uppercase api hash", cfg: Config{APIID: 1, APIHash: "0123456789ABCDEF0123456789ABCDEF"}, wantErr: true},
-		{name: "short api hash", cfg: Config{APIID: 1, APIHash: "abc"}, wantErr: true},
-		{name: "bad allowed chat", cfg: Config{APIID: 1, APIHash: testAPIHash, AllowedChats: []string{"durov"}}, wantErr: true},
+		{
+			name: "valid without allowlist",
+			cfg: Config{
+				APIID:   1,
+				APIHash: testAPIHash,
+			},
+		},
+		{
+			name: "valid with allowlist",
+			cfg: Config{
+				APIID:        1,
+				APIHash:      testAPIHash,
+				AllowedChats: []string{"@durov", "42"},
+			},
+		},
+		{
+			name:    "zero api id",
+			cfg:     Config{APIHash: testAPIHash},
+			wantErr: true,
+		},
+		{
+			name: "negative api id",
+			cfg: Config{
+				APIID:   -1,
+				APIHash: testAPIHash,
+			},
+			wantErr: true,
+		},
+		{
+			name: "uppercase api hash",
+			cfg: Config{
+				APIID:   1,
+				APIHash: "0123456789ABCDEF0123456789ABCDEF",
+			},
+			wantErr: true,
+		},
+		{
+			name: "short api hash",
+			cfg: Config{
+				APIID:   1,
+				APIHash: "abc",
+			},
+			wantErr: true,
+		},
+		{
+			name: "bad allowed chat",
+			cfg: Config{
+				APIID:        1,
+				APIHash:      testAPIHash,
+				AllowedChats: []string{"durov"},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -168,8 +230,19 @@ func Test_Config_Deny(t *testing.T) {
 		wantRemoved int
 		want        []string
 	}{
-		{name: "removes by normalized ref", allowed: []string{"@Durov", "42", "-1001"}, deny: []domain.ChatRef{{Username: "durov"}, {ID: -1001}}, wantRemoved: 2, want: []string{"42"}},
-		{name: "unknown ref keeps list", allowed: []string{"42"}, deny: []domain.ChatRef{{ID: 7}}, want: []string{"42"}},
+		{
+			name:        "removes by normalized ref",
+			allowed:     []string{"@Durov", "42", "-1001"},
+			deny:        []domain.ChatRef{{Username: "durov"}, {ID: -1001}},
+			wantRemoved: 2,
+			want:        []string{"42"},
+		},
+		{
+			name:    "unknown ref keeps list",
+			allowed: []string{"42"},
+			deny:    []domain.ChatRef{{ID: 7}},
+			want:    []string{"42"},
+		},
 	}
 
 	for _, tt := range tests {

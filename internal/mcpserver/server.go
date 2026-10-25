@@ -71,9 +71,17 @@ type handlers struct {
 
 // New creates an MCP server with read tools.
 func New(opts Options) *mcp.Server {
-	h := &handlers{reader: opts.Reader, media: opts.Media, location: opts.Location, logger: opts.Logger}
+	h := &handlers{
+		reader:   opts.Reader,
+		media:    opts.Media,
+		location: opts.Location,
+		logger:   opts.Logger,
+	}
 
-	server := mcp.NewServer(&mcp.Implementation{Name: "tg-mcp", Version: opts.Version}, &mcp.ServerOptions{
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "tg-mcp",
+		Version: opts.Version,
+	}, &mcp.ServerOptions{
 		Instructions: instructions,
 	})
 
@@ -116,7 +124,11 @@ func New(opts Options) *mcp.Server {
 func readOnly() *mcp.ToolAnnotations {
 	// Messages, names and files come from other people, not from a closed domain.
 	openWorld := true
-	return &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &openWorld}
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint:   true,
+		IdempotentHint: true,
+		OpenWorldHint:  &openWorld,
+	}
 }
 
 // --- list_chats ---
@@ -149,7 +161,10 @@ func (h *handlers) listChats(ctx context.Context, _ *mcp.CallToolRequest, in Lis
 		return nil, ListChatsOutput{}, h.fail("list_chats", err)
 	}
 
-	out := ListChatsOutput{Notice: untrustedNotice, Chats: make([]ChatDTO, 0, len(chats))}
+	out := ListChatsOutput{
+		Notice: untrustedNotice,
+		Chats:  make([]ChatDTO, 0, len(chats)),
+	}
 	for _, chat := range chats {
 		out.Chats = append(out.Chats, ChatDTO{
 			ID:            chat.ID,
@@ -214,7 +229,11 @@ func (h *handlers) readMessages(ctx context.Context, _ *mcp.CallToolRequest, in 
 	ctx, cancel := context.WithTimeout(ctx, toolTimeout)
 	defer cancel()
 
-	messages, err := h.reader.History(ctx, ref, telegram.HistoryParams{Limit: in.Limit, BeforeID: in.BeforeID, AfterID: in.AfterID})
+	messages, err := h.reader.History(ctx, ref, telegram.HistoryParams{
+		Limit:    in.Limit,
+		BeforeID: in.BeforeID,
+		AfterID:  in.AfterID,
+	})
 	if err != nil {
 		return nil, MessagesOutput{}, h.fail("read_messages", err)
 	}
@@ -237,7 +256,10 @@ type SearchMessagesInput struct {
 }
 
 func (h *handlers) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, in SearchMessagesInput) (*mcp.CallToolResult, MessagesOutput, error) {
-	params := telegram.SearchParams{Query: in.Query, Limit: in.Limit}
+	params := telegram.SearchParams{
+		Query: in.Query,
+		Limit: in.Limit,
+	}
 	if in.Chat != "" {
 		ref, err := domain.ParseChatRef(in.Chat)
 		if err != nil {
@@ -312,7 +334,10 @@ func (h *handlers) getMedia(ctx context.Context, _ *mcp.CallToolRequest, in GetM
 	if isImage && buf.Len() <= maxInlineImage {
 		out.Inline = true
 		return &mcp.CallToolResult{Content: []mcp.Content{
-			&mcp.ImageContent{Data: buf.Bytes(), MIMEType: media.MimeType},
+			&mcp.ImageContent{
+				Data:     buf.Bytes(),
+				MIMEType: media.MimeType,
+			},
 			jsonContent(out),
 		}}, nil, nil
 	}
@@ -333,9 +358,8 @@ type DocumentOutput struct {
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
-// documentResult extracts the text on the server: the file reading tool does not understand
-// DOCX/XLSX, and parsing them with third-party programs would mean running code on an untrusted file.
 func (h *handlers) documentResult(out MediaOutput, kind domain.MediaKind, data []byte) (*mcp.CallToolResult, any, error) {
+	// The file reading tool does not understand DOCX/XLSX, and external parsers would run code on an untrusted file.
 	extract := office.DocxText
 	if kind == domain.MediaKindXLSX {
 		extract = office.XlsxText
@@ -355,16 +379,18 @@ func (h *handlers) documentResult(out MediaOutput, kind domain.MediaKind, data [
 
 // --- helpers ---
 
-// messagesOutput builds a response within maxResponseRunes. keepNewest keeps the
-// end of the list (for chronological history), otherwise the beginning.
 func (h *handlers) messagesOutput(messages []domain.Message, keepNewest bool) MessagesOutput {
-	out := MessagesOutput{Notice: untrustedNotice, Messages: make([]MessageDTO, 0, len(messages))}
+	out := MessagesOutput{
+		Notice:   untrustedNotice,
+		Messages: make([]MessageDTO, 0, len(messages)),
+	}
 
 	budget := maxResponseRunes
 	dtos := make([]MessageDTO, len(messages))
 	keep := 0
 	for i := range messages {
 		index := i
+		// Chronological history keeps the end of the list.
 		if keepNewest {
 			index = len(messages) - 1 - i
 		}

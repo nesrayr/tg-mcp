@@ -44,11 +44,14 @@ type Reader struct {
 }
 
 func NewReader(api *tg.Client, directory *Directory, opts ReaderOptions) *Reader {
-	return &Reader{api: api, directory: directory, opts: opts}
+	return &Reader{
+		api:       api,
+		directory: directory,
+		opts:      opts,
+	}
 }
 
-// ListChats returns the allowed chats with unread counters,
-// most recent first.
+// ListChats returns the allowed chats with unread counters, most recent first.
 func (r *Reader) ListChats(ctx context.Context, unreadOnly bool) ([]domain.Chat, error) {
 	allowed, err := r.directory.Allowed(ctx)
 	if err != nil {
@@ -175,9 +178,6 @@ type SearchResult struct {
 }
 
 // Search finds messages and returns the most recent matches first.
-//
-// Without a chat, search runs over each allowed chat separately rather than through
-// Telegram's global search: this way the request never touches chats outside the allowlist.
 func (r *Reader) Search(ctx context.Context, params SearchParams) (SearchResult, error) {
 	var (
 		targets []resolvedChat
@@ -190,6 +190,8 @@ func (r *Reader) Search(ctx context.Context, params SearchParams) (SearchResult,
 		}
 		targets = []resolvedChat{chat}
 	} else {
+		// Each allowed chat is searched separately instead of the global search,
+		// so the request never touches chats outside the allowlist.
 		allowed, err := r.directory.Allowed(ctx)
 		if err != nil {
 			return SearchResult{}, err
@@ -222,14 +224,16 @@ func (r *Reader) Search(ctx context.Context, params SearchParams) (SearchResult,
 	}, nil
 }
 
-// DownloadMedia writes a message attachment to w. Only photos, images
-// and PDFs up to MaxMediaSize are downloaded; exceeding the limit mid-download returns ErrMediaTooLarge.
+// DownloadMedia writes a message attachment to w, failing with ErrMediaTooLarge over MaxMediaSize.
 func (r *Reader) DownloadMedia(ctx context.Context, ref domain.ChatRef, messageID int, w io.Writer) (domain.Attachment, error) {
 	chat, err := r.directory.Resolve(ctx, ref)
 	if err != nil {
 		return domain.Attachment{}, err
 	}
-	attachment := domain.Attachment{ChatID: chat.chat.ID, MessageID: messageID}
+	attachment := domain.Attachment{
+		ChatID:    chat.chat.ID,
+		MessageID: messageID,
+	}
 
 	msg, err := r.message(ctx, chat, messageID)
 	if err != nil {
@@ -256,7 +260,10 @@ func (r *Reader) DownloadMedia(ctx context.Context, ref domain.ChatRef, messageI
 	ctx, cancel := context.WithTimeout(ctx, r.opts.DownloadTimeout)
 	defer cancel()
 
-	limited := &limitedWriter{w: w, remaining: r.opts.MaxMediaSize}
+	limited := &limitedWriter{
+		w:         w,
+		remaining: r.opts.MaxMediaSize,
+	}
 	if _, err := downloader.NewDownloader().Download(r.api, location).WithVerify(false).Stream(ctx, limited); err != nil {
 		return attachment, fmt.Errorf("download media: %w", err)
 	}
@@ -272,8 +279,11 @@ func (r *Reader) message(ctx context.Context, chat resolvedChat, id int) (*tg.Me
 	)
 	if channel, ok := chat.peer.(*tg.InputPeerChannel); ok {
 		result, err = r.api.ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{
-			Channel: &tg.InputChannel{ChannelID: channel.ChannelID, AccessHash: channel.AccessHash},
-			ID:      ids,
+			Channel: &tg.InputChannel{
+				ChannelID:  channel.ChannelID,
+				AccessHash: channel.AccessHash,
+			},
+			ID: ids,
 		})
 	} else {
 		result, err = r.api.MessagesGetMessages(ctx, ids)

@@ -12,10 +12,8 @@ import (
 )
 
 // AllDialogs returns all chats of the account, ignoring the allowlist.
-//
-// Used only by the `tg-mcp chats` command, which shows the list to the owner
-// in the terminal so they can choose allowed_chats. Not available to the MCP server.
 func AllDialogs(ctx context.Context, api *tg.Client, limit int) ([]domain.Chat, error) {
+	// Only for the `tg-mcp chats` command; the MCP server must never see chats outside the allowlist.
 	iter := dialogs.NewQueryBuilder(api).GetDialogs().BatchSize(dialogsBatchSize).Iter()
 
 	var chats []domain.Chat

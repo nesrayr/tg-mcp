@@ -91,7 +91,6 @@ func checkPassword(ctx context.Context, client *auth.Client, prompt Prompter) er
 	}
 }
 
-// terminalAuth is an auth.UserAuthenticator that prompts in the terminal.
 type terminalAuth struct {
 	prompt Prompter
 }

@@ -21,7 +21,6 @@ var supportedImageMIME = map[string]struct{}{
 	"image/gif":  {},
 }
 
-// classifyMedia describes an attachment. Uninteresting attachments (link previews) are nil.
 func classifyMedia(raw tg.MessageMediaClass, maxSize int64) *domain.Media {
 	switch media := raw.(type) {
 	case nil, *tg.MessageMediaEmpty, *tg.MessageMediaWebPage:
@@ -29,7 +28,10 @@ func classifyMedia(raw tg.MessageMediaClass, maxSize int64) *domain.Media {
 	case *tg.MessageMediaPhoto:
 		photo, ok := media.Photo.(*tg.Photo)
 		if !ok {
-			return &domain.Media{Kind: domain.MediaKindPhoto, MimeType: "image/jpeg"}
+			return &domain.Media{
+				Kind:     domain.MediaKindPhoto,
+				MimeType: "image/jpeg",
+			}
 		}
 		size, _ := choosePhotoSize(photo)
 		return &domain.Media{
@@ -122,7 +124,6 @@ func documentKind(mime, fileName string) domain.MediaKind {
 	}
 }
 
-// isDownloadableKind reports the attachment kinds the model can process.
 func isDownloadableKind(kind domain.MediaKind) bool {
 	switch kind {
 	case domain.MediaKindPhoto, domain.MediaKindImage, domain.MediaKindPDF, domain.MediaKindDOCX, domain.MediaKindXLSX:
@@ -142,8 +143,6 @@ type photoSize struct {
 	bytes int64
 }
 
-// choosePhotoSize picks the largest size whose side is at most maxPhotoSide,
-// or, if there is none, the smallest one available.
 func choosePhotoSize(photo *tg.Photo) (photoSize, bool) {
 	var best, smallest photoSize
 	bestSide, smallestSide := 0, 0
@@ -155,12 +154,18 @@ func choosePhotoSize(photo *tg.Photo) (photoSize, bool) {
 		)
 		switch s := raw.(type) {
 		case *tg.PhotoSize:
-			size, side = photoSize{typ: s.Type, bytes: int64(s.Size)}, max(s.W, s.H)
+			size, side = photoSize{
+				typ:   s.Type,
+				bytes: int64(s.Size),
+			}, max(s.W, s.H)
 		case *tg.PhotoSizeProgressive:
 			if len(s.Sizes) == 0 {
 				continue
 			}
-			size, side = photoSize{typ: s.Type, bytes: int64(s.Sizes[len(s.Sizes)-1])}, max(s.W, s.H)
+			size, side = photoSize{
+				typ:   s.Type,
+				bytes: int64(s.Sizes[len(s.Sizes)-1]),
+			}, max(s.W, s.H)
 		default:
 			continue
 		}
@@ -179,7 +184,6 @@ func choosePhotoSize(photo *tg.Photo) (photoSize, bool) {
 	return smallest, smallestSide > 0
 }
 
-// fileLocation builds the location of a file to download.
 func fileLocation(raw tg.MessageMediaClass) (tg.InputFileLocationClass, bool) {
 	switch media := raw.(type) {
 	case *tg.MessageMediaPhoto:

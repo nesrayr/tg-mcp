@@ -7,9 +7,7 @@ import (
 	"strings"
 )
 
-// DocxText returns the text of a Word document: paragraphs as lines, tables as rows
-// like "| cell | cell |". Headers, footers, footnotes and text deleted in track changes
-// are not included.
+// DocxText returns the body text of a Word document, with tables as "| cell | cell |" rows.
 func DocxText(data []byte) (string, error) {
 	arc, err := openArchive(data)
 	if err != nil {

@@ -69,7 +69,11 @@ func runSetup(ctx context.Context, args []string) error {
 		return err
 	}
 
-	cfg := config.Config{APIID: apiID, APIHash: apiHash, AllowedChats: existing.AllowedChats}
+	cfg := config.Config{
+		APIID:        apiID,
+		APIHash:      apiHash,
+		AllowedChats: existing.AllowedChats,
+	}
 	if err := config.Save(paths, cfg); err != nil {
 		return err
 	}
@@ -278,7 +282,6 @@ func loadConfig() (config.Paths, config.Config, error) {
 	return paths, cfg, nil
 }
 
-// withSession starts a read-only client on top of an existing session.
 func withSession(ctx context.Context, paths config.Paths, cfg config.Config, fn func(context.Context, *gotd.Client) error) error {
 	if err := config.CheckPrivate(paths.SessionFile); err != nil {
 		if errors.Is(err, config.ErrNotConfigured) {
