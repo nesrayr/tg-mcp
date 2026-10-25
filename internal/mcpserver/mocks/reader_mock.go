@@ -89,10 +89,10 @@ func (mr *MockReaderMockRecorder) ListChats(ctx, unreadOnly any) *gomock.Call {
 }
 
 // Search mocks base method.
-func (m *MockReader) Search(ctx context.Context, params telegram.SearchParams) ([]domain.Message, error) {
+func (m *MockReader) Search(ctx context.Context, params telegram.SearchParams) (telegram.SearchResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Search", ctx, params)
-	ret0, _ := ret[0].([]domain.Message)
+	ret0, _ := ret[0].(telegram.SearchResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

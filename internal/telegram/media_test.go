@@ -172,30 +172,3 @@ func Test_choosePhotoSize(t *testing.T) {
 		})
 	}
 }
-
-func Test_fileLocation(t *testing.T) {
-	t.Parallel()
-
-	t.Run("photo", func(t *testing.T) {
-		t.Parallel()
-
-		got, ok := fileLocation(&tg.MessageMediaPhoto{Photo: testPhoto()})
-		require.True(t, ok)
-		require.Equal(t, &tg.InputPhotoFileLocation{ID: 900, AccessHash: 901, FileReference: []byte{9, 9}, ThumbSize: "y"}, got)
-	})
-
-	t.Run("document", func(t *testing.T) {
-		t.Parallel()
-
-		got, ok := fileLocation(&tg.MessageMediaDocument{Document: testDocument("application/pdf", 1)})
-		require.True(t, ok)
-		require.Equal(t, &tg.InputDocumentFileLocation{ID: 800, AccessHash: 801, FileReference: []byte{8}}, got)
-	})
-
-	t.Run("unsupported media", func(t *testing.T) {
-		t.Parallel()
-
-		_, ok := fileLocation(&tg.MessageMediaGeo{Geo: &tg.GeoPointEmpty{}})
-		require.False(t, ok)
-	})
-}

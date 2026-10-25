@@ -56,7 +56,12 @@ func Test_Reader_ListChats(t *testing.T) {
 				},
 				Messages: []tg.MessageClass{
 					&tg.Message{ID: 10, PeerID: &tg.PeerUser{UserID: momUserID}, Date: unix(0)},
-					&tg.Message{ID: 20, PeerID: &tg.PeerChannel{ChannelID: newsChanID}, Date: unix(time.Hour)},
+					&tg.MessageService{
+						ID:     20,
+						PeerID: &tg.PeerChannel{ChannelID: newsChanID},
+						Date:   unix(time.Hour),
+						Action: &tg.MessageActionPinMessage{},
+					},
 				},
 				State: tg.UpdatesState{},
 			})
@@ -110,6 +115,29 @@ func Test_Reader_History(t *testing.T) {
 		}, got)
 	})
 
+	t.Run("after id pages forward from that message", func(t *testing.T) {
+		t.Parallel()
+
+		mock, reader := newTestReader(t)
+		mock.ExpectCall(&tg.MessagesGetHistoryRequest{
+			Peer:      momPeer,
+			OffsetID:  10,
+			AddOffset: -5,
+			MinID:     10,
+			Limit:     5,
+		}).ThenResult(&tg.MessagesMessages{
+			Messages: []tg.MessageClass{
+				&tg.Message{ID: 12, PeerID: &tg.PeerUser{UserID: momUserID}, Date: unix(time.Minute), Message: "second"},
+				&tg.Message{ID: 11, PeerID: &tg.PeerUser{UserID: momUserID}, Date: unix(0), Message: "first"},
+			},
+			Users: []tg.UserClass{momUser()},
+		})
+
+		got, err := reader.History(ctx, domain.ChatRef{ID: momChatID}, HistoryParams{Limit: 5, AfterID: 10})
+		require.NoError(t, err)
+		require.Equal(t, []int{11, 12}, []int{got[0].ID, got[1].ID})
+	})
+
 	t.Run("limit is clamped", func(t *testing.T) {
 		t.Parallel()
 
@@ -153,10 +181,52 @@ func Test_Reader_Search(t *testing.T) {
 
 		got, err := reader.Search(ctx, SearchParams{Query: "report", Limit: 2})
 		require.NoError(t, err)
-		require.Len(t, got, 2)
-		require.Equal(t, []int{3, 7}, []int{got[0].ID, got[1].ID})
-		require.Equal(t, []int64{momChatID, newsChatID}, []int64{got[0].ChatID, got[1].ChatID})
-		require.Equal(t, "Go News", got[1].Sender)
+		require.Len(t, got.Messages, 2)
+		require.Equal(t, []int{3, 7}, []int{got.Messages[0].ID, got.Messages[1].ID})
+		require.Equal(t, []int64{momChatID, newsChatID}, []int64{got.Messages[0].ChatID, got.Messages[1].ChatID})
+		require.Equal(t, "Go News", got.Messages[1].Sender)
+		require.Zero(t, got.SkippedChats)
+	})
+
+	t.Run("reports chats beyond the search limit", func(t *testing.T) {
+		t.Parallel()
+
+		mock, api := newMock(t)
+		dialogs := &tg.MessagesDialogs{}
+		refs := make([]domain.ChatRef, 0, MaxSearchChats+2)
+		for id := int64(100); id < 100+MaxSearchChats+2; id++ {
+			dialogs.Dialogs = append(dialogs.Dialogs, &tg.Dialog{
+				Peer:       &tg.PeerUser{UserID: id},
+				TopMessage: 1,
+			})
+			dialogs.Users = append(dialogs.Users, &tg.User{
+				ID:         id,
+				AccessHash: id,
+				FirstName:  "User",
+			})
+			refs = append(refs, domain.ChatRef{ID: userChatID(id)})
+		}
+		mock.ExpectFunc(func(b bin.Encoder) {
+			_, ok := b.(*tg.MessagesGetDialogsRequest)
+			require.True(t, ok)
+		}).ThenResult(dialogs)
+		for id := int64(100); id < 100+MaxSearchChats; id++ {
+			mock.ExpectCall(&tg.MessagesSearchRequest{
+				Peer:   &tg.InputPeerUser{UserID: id, AccessHash: id},
+				Q:      "report",
+				Filter: &tg.InputMessagesFilterEmpty{},
+				Limit:  20,
+			}).ThenResult(&tg.MessagesMessages{})
+		}
+		reader := NewReader(api, NewDirectory(api, refs, discardLogs), ReaderOptions{
+			MaxMediaSize:    testMaxMedia,
+			DownloadTimeout: 5 * time.Second,
+		})
+
+		got, err := reader.Search(ctx, SearchParams{Query: "report"})
+		require.NoError(t, err)
+		require.Empty(t, got.Messages)
+		require.Equal(t, 2, got.SkippedChats)
 	})
 
 	t.Run("in a single chat", func(t *testing.T) {
@@ -168,7 +238,7 @@ func Test_Reader_Search(t *testing.T) {
 
 		got, err := reader.Search(ctx, SearchParams{Query: "release", Chat: &domain.ChatRef{ID: newsChatID}})
 		require.NoError(t, err)
-		require.Len(t, got, 1)
+		require.Len(t, got.Messages, 1)
 	})
 
 	t.Run("chat outside allowlist", func(t *testing.T) {

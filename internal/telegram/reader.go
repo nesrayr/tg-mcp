@@ -17,8 +17,9 @@ import (
 
 const (
 	MaxMessagesLimit = 100
-	// maxSearchChats limits search without a chat: it costs one request per chat.
-	maxSearchChats = 50
+	// MaxSearchChats limits search without a chat: it costs one request per chat.
+	MaxSearchChats       = 50
+	peerDialogsBatchSize = 100
 )
 
 var (
@@ -62,7 +63,7 @@ func (r *Reader) ListChats(ctx context.Context, unreadOnly bool) ([]domain.Chat,
 		byID[chat.chat.ID] = chat.chat
 	}
 
-	for batch := range slices.Chunk(allowed, MaxMessagesLimit) {
+	for batch := range slices.Chunk(allowed, peerDialogsBatchSize) {
 		peers := make([]tg.InputDialogPeerClass, 0, len(batch))
 		for _, chat := range batch {
 			peers = append(peers, &tg.InputDialogPeer{Peer: chat.peer})
@@ -90,18 +91,19 @@ func (r *Reader) ListChats(ctx context.Context, unreadOnly bool) ([]domain.Chat,
 func applyDialogs(byID map[int64]domain.Chat, result *tg.MessagesPeerDialogs) {
 	lastDates := make(map[int64]map[int]time.Time)
 	for _, raw := range result.Messages {
-		msg, ok := raw.(*tg.Message)
+		// The top message can be a service one (pinned message, member joined).
+		msg, ok := raw.AsNotEmpty()
 		if !ok {
 			continue
 		}
-		chatID, ok := peerChatID(msg.PeerID)
+		chatID, ok := peerChatID(msg.GetPeerID())
 		if !ok {
 			continue
 		}
 		if lastDates[chatID] == nil {
 			lastDates[chatID] = make(map[int]time.Time)
 		}
-		lastDates[chatID][msg.ID] = time.Unix(int64(msg.Date), 0).UTC()
+		lastDates[chatID][msg.GetID()] = time.Unix(int64(msg.GetDate()), 0).UTC()
 	}
 
 	for _, raw := range result.Dialogs {
@@ -137,12 +139,19 @@ func (r *Reader) History(ctx context.Context, ref domain.ChatRef, params History
 		return nil, err
 	}
 
-	result, err := r.api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+	request := &tg.MessagesGetHistoryRequest{
 		Peer:     chat.peer,
 		OffsetID: params.BeforeID,
 		MinID:    params.AfterID,
 		Limit:    clampLimit(params.Limit),
-	})
+	}
+	if params.AfterID > 0 && params.BeforeID == 0 {
+		// Without offset_id Telegram returns the newest messages above min_id and skips
+		// the ones right after it, so paging forward shifts the window with add_offset.
+		request.OffsetID = params.AfterID
+		request.AddOffset = -request.Limit
+	}
+	result, err := r.api.MessagesGetHistory(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("get history: %w", err)
 	}
@@ -159,24 +168,34 @@ type SearchParams struct {
 	Limit int
 }
 
+// SearchResult holds the matches and the number of allowed chats left out by MaxSearchChats.
+type SearchResult struct {
+	Messages     []domain.Message
+	SkippedChats int
+}
+
 // Search finds messages and returns the most recent matches first.
 //
 // Without a chat, search runs over each allowed chat separately rather than through
 // Telegram's global search: this way the request never touches chats outside the allowlist.
-func (r *Reader) Search(ctx context.Context, params SearchParams) ([]domain.Message, error) {
-	var targets []resolvedChat
+func (r *Reader) Search(ctx context.Context, params SearchParams) (SearchResult, error) {
+	var (
+		targets []resolvedChat
+		skipped int
+	)
 	if params.Chat != nil {
 		chat, err := r.directory.Resolve(ctx, *params.Chat)
 		if err != nil {
-			return nil, err
+			return SearchResult{}, err
 		}
 		targets = []resolvedChat{chat}
 	} else {
 		allowed, err := r.directory.Allowed(ctx)
 		if err != nil {
-			return nil, err
+			return SearchResult{}, err
 		}
-		targets = allowed[:min(len(allowed), maxSearchChats)]
+		targets = allowed[:min(len(allowed), MaxSearchChats)]
+		skipped = len(allowed) - len(targets)
 	}
 
 	limit := clampLimit(params.Limit)
@@ -189,7 +208,7 @@ func (r *Reader) Search(ctx context.Context, params SearchParams) ([]domain.Mess
 			Limit:  limit,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("search messages: %w", err)
+			return SearchResult{}, fmt.Errorf("search messages: %w", err)
 		}
 		found = append(found, r.mapMessages(chat.chat, result)...)
 	}
@@ -197,7 +216,10 @@ func (r *Reader) Search(ctx context.Context, params SearchParams) ([]domain.Mess
 	slices.SortFunc(found, func(a, b domain.Message) int {
 		return cmp.Or(b.Date.Compare(a.Date), cmp.Compare(b.ID, a.ID))
 	})
-	return found[:min(len(found), limit)], nil
+	return SearchResult{
+		Messages:     found[:min(len(found), limit)],
+		SkippedChats: skipped,
+	}, nil
 }
 
 // DownloadMedia writes a message attachment to w. Only photos, images

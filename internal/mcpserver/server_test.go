@@ -19,6 +19,7 @@ import (
 	"github.com/nesrayr/tg-mcp/internal/domain"
 	"github.com/nesrayr/tg-mcp/internal/mcpserver/mocks"
 	"github.com/nesrayr/tg-mcp/internal/telegram"
+	"github.com/nesrayr/tg-mcp/internal/textsafe"
 )
 
 var testTime = time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
@@ -95,7 +96,7 @@ func Test_ListTools(t *testing.T) {
 	for _, tool := range result.Tools {
 		names = append(names, tool.Name)
 		require.True(t, tool.Annotations.ReadOnlyHint)
-		require.False(t, *tool.Annotations.OpenWorldHint)
+		require.True(t, *tool.Annotations.OpenWorldHint)
 	}
 	require.ElementsMatch(t, []string{"list_chats", "read_messages", "search_messages", "get_media"}, names)
 }
@@ -132,13 +133,14 @@ func Test_ListChats(t *testing.T) {
 		require.Contains(t, out.Hint, "tg-mcp allow")
 	})
 
-	t.Run("reader error", func(t *testing.T) {
+	t.Run("reader error is sanitized and limited", func(t *testing.T) {
 		t.Parallel()
 
 		f := newFixture(t)
-		f.reader.EXPECT().ListChats(gomock.Any(), false).Return(nil, errors.New("flood wait"))
+		f.reader.EXPECT().ListChats(gomock.Any(), false).Return(nil, errors.New("flood\u202e wait "+strings.Repeat("x", 1000)))
 
-		require.Contains(t, errorText(t, f.call(t, "list_chats", nil)), "flood wait")
+		want := "flood wait " + strings.Repeat("x", maxErrorRunes-len("flood wait ")) + textsafe.TruncatedMark
+		require.Equal(t, want, errorText(t, f.call(t, "list_chats", nil)))
 	})
 }
 
@@ -155,7 +157,7 @@ func Test_ReadMessages(t *testing.T) {
 				{
 					ID: 12, ChatID: 42, Date: testTime.Add(time.Minute), EditedAt: testTime.Add(2 * time.Minute), SenderID: 1, Sender: "Me",
 					Outgoing: true, Text: "ok", ReplyToID: 11,
-					Media: &domain.Media{Kind: domain.MediaKindPDF, FileName: "report\u202e.pdf", MimeType: "application/pdf", Size: 3, Downloadable: true},
+					Media: &domain.Media{Kind: domain.MediaKindPDF, FileName: "report\u202e.pdf", MimeType: "application/pdf\u202e", Size: 3, Downloadable: true},
 				},
 			}, nil)
 
@@ -221,12 +223,37 @@ func Test_SearchMessages(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		args   map[string]any
-		params telegram.SearchParams
+		name     string
+		args     map[string]any
+		params   telegram.SearchParams
+		skipped  int
+		wantHint string
 	}{
-		{name: "all allowed chats", args: map[string]any{"query": "report"}, params: telegram.SearchParams{Query: "report"}},
-		{name: "single chat", args: map[string]any{"query": "report", "chat": "-1001", "limit": 3}, params: telegram.SearchParams{Query: "report", Chat: &domain.ChatRef{ID: -1001}, Limit: 3}},
+		{
+			name:   "all allowed chats",
+			args:   map[string]any{"query": "report"},
+			params: telegram.SearchParams{Query: "report"},
+		},
+		{
+			name: "single chat",
+			args: map[string]any{
+				"query": "report",
+				"chat":  "-1001",
+				"limit": 3,
+			},
+			params: telegram.SearchParams{
+				Query: "report",
+				Chat:  &domain.ChatRef{ID: -1001},
+				Limit: 3,
+			},
+		},
+		{
+			name:     "skipped chats are reported",
+			args:     map[string]any{"query": "report"},
+			params:   telegram.SearchParams{Query: "report"},
+			skipped:  7,
+			wantHint: "7 allowed chats were not searched",
+		},
 	}
 
 	for _, tt := range tests {
@@ -234,10 +261,34 @@ func Test_SearchMessages(t *testing.T) {
 			t.Parallel()
 
 			f := newFixture(t)
-			f.reader.EXPECT().Search(gomock.Any(), tt.params).Return([]domain.Message{{ID: 5, ChatID: -1001, Date: testTime, Sender: "Go News", Text: "report is ready"}}, nil)
+			f.reader.EXPECT().Search(gomock.Any(), tt.params).Return(telegram.SearchResult{
+				Messages: []domain.Message{
+					{
+						ID:     5,
+						ChatID: -1001,
+						Date:   testTime,
+						Sender: "Go News",
+						Text:   "report is ready",
+					},
+				},
+				SkippedChats: tt.skipped,
+			}, nil)
 
 			out := decodeText[MessagesOutput](t, f.call(t, "search_messages", tt.args), 0)
-			require.Equal(t, []MessageDTO{{ID: 5, ChatID: -1001, Date: "2026-10-21T12:00:00Z", From: "Go News", Text: "report is ready"}}, out.Messages)
+			require.Equal(t, []MessageDTO{
+				{
+					ID:     5,
+					ChatID: -1001,
+					Date:   "2026-10-21T12:00:00Z",
+					From:   "Go News",
+					Text:   "report is ready",
+				},
+			}, out.Messages)
+			if tt.wantHint == "" {
+				require.Empty(t, out.Hint)
+				return
+			}
+			require.Contains(t, out.Hint, tt.wantHint)
 		})
 	}
 }

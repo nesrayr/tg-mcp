@@ -13,7 +13,7 @@ import (
 
 const version = "0.1.0"
 
-const usage = `tg-mcp — a read-only MCP server for Telegram.
+const usage = `tg-mcp: a read-only MCP server for Telegram.
 
 Usage:
   tg-mcp setup              save api_id and api_hash

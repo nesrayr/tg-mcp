@@ -11,10 +11,10 @@ to selected chats of your personal Telegram account: messages, search, photos, P
 | The agent "reads" messages on your behalf | `messages.readHistory` and similar methods are blocked: unread stays unread, the "online" status does not change |
 | Access to all conversations | Only chats in `allowed_chats` are visible. The rest are indistinguishable from nonexistent ones; search runs over each allowed chat separately, never globally |
 | The agent extends its own access through MCP | No MCP tool changes the allowlist. `tg-mcp allow` and `tg-mcp chats` refuse to run without an interactive terminal, which stops attempts from a pipe but not an agent with an unrestricted shell (see [Agents with shell access](#agents-with-shell-access)) |
-| Prompt injection in messages | Every response is marked as untrusted data. Control characters, bidi overrides, zero-width characters and Unicode tags are stripped from the text. Length is limited |
+| Prompt injection in messages | Every response is marked as untrusted data. Control and invisible characters (bidi overrides, zero-width characters, Unicode tags, variation selectors) are stripped from the text and from error messages. Length is limited |
 | Session leak | Config and session live in `~/.config/tg-mcp/` (directory 0700, files 0600); the server refuses to start with looser permissions |
 | Malicious file name | Attachments are saved as `<chat_id>_<message_id>.<ext>`; the sender's file name never becomes part of the path |
-| Malicious DOCX/XLSX | Text is extracted by the server itself using the Go standard library: macros are not executed, external XML entities are not loaded, decompression and extracted text size are bounded (zip bomb protection) |
+| Malicious DOCX/XLSX | Text is extracted by the server itself using the Go standard library: macros are not executed, external XML entities are not loaded; decompressed size, XML nesting, tag size, element counts and extracted text size are bounded, so a small file cannot exhaust memory |
 
 Residual risk: chat text ends up in the model's context. The server sends nothing, but
 keep the agent's network tools (WebFetch and the like) behind a confirmation prompt.
@@ -109,7 +109,7 @@ Run all commands below **in a separate terminal tab**, not through the agent.
 |---|---|
 | `list_chats` | Allowed chats: ID, type, title, unread count, time of the last message |
 | `read_messages` | Chat messages in order; `before_id`/`after_id` for paging, up to 100 at a time |
-| `search_messages` | Text search in one or all allowed chats |
+| `search_messages` | Text search in one chat or across allowed chats (up to the first 50 in `allowed_chats` order) |
 | `get_media` | Photos as an image in the response; DOCX and XLSX as extracted text (tables row by row, merged cells expanded, dates in the cell's format); PDFs and large images as a file in `~/.cache/tg-mcp/media/` |
 
 Legacy `.doc`/`.xls` formats are not supported.
@@ -122,7 +122,7 @@ up to ~60,000 characters of text per response; files are deleted after 7 days.
 | Path | Contents |
 |---|---|
 | `~/.config/tg-mcp/config.json` | `api_id`, `api_hash`, `allowed_chats` |
-| `~/.config/tg-mcp/session.json` | Telegram session — **full access to the account**, never share it |
+| `~/.config/tg-mcp/session.json` | Telegram session: **full access to the account**, never share it |
 | `~/.cache/tg-mcp/media/` | Downloaded PDFs and large images |
 
 The directories can be overridden with `TG_MCP_CONFIG_DIR` and `TG_MCP_CACHE_DIR`.
@@ -130,19 +130,20 @@ The directories can be overridden with `TG_MCP_CONFIG_DIR` and `TG_MCP_CACHE_DIR
 ## Development
 
 ```sh
-make test       # go test -race ./...
+make test       # go test -race ./... and the memory limit test without -race
 make lint       # go vet + staticcheck
 make generate   # mocks (mockgen)
 ```
 
 Layout:
 
-- `internal/telegram` — layer over gotd: `Guard` (RPC allowlist), `Directory` (chat allowlist), `Reader`
-- `internal/mcpserver` — MCP tools, text sanitization, attachment storage
-- `internal/office` — text extraction from DOCX and XLSX
-- `internal/login` — QR and code login
-- `internal/config` — config with permission checks
-- `cmd/tg-mcp` — CLI
+- `internal/telegram`: the layer over gotd with `Guard` (RPC allowlist), `Directory` (chat allowlist) and `Reader`
+- `internal/mcpserver`: MCP tools and attachment storage
+- `internal/textsafe`: cleaning of untrusted text
+- `internal/office`: text extraction from DOCX and XLSX
+- `internal/login`: QR and code login
+- `internal/config`: config with permission checks
+- `cmd/tg-mcp`: CLI
 
 When adding a Telegram API call, add the method to `ReadOnlyPolicy` (`internal/telegram/guard.go`)
 and to the `Test_ReadOnlyPolicy_Methods` test, otherwise the request will be rejected with `ErrMethodNotAllowed`.

@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -22,9 +23,11 @@ import (
 	"github.com/nesrayr/tg-mcp/internal/login"
 	"github.com/nesrayr/tg-mcp/internal/mcpserver"
 	"github.com/nesrayr/tg-mcp/internal/telegram"
+	"github.com/nesrayr/tg-mcp/internal/textsafe"
 )
 
 const (
+	maxTitleRunes   = 200
 	loginTimeout    = 10 * time.Minute
 	maxMediaSize    = 20 << 20
 	downloadTimeout = 2 * time.Minute
@@ -170,7 +173,9 @@ func runChats(ctx context.Context, args []string) error {
 			if chat.Username != "" {
 				username = "@" + chat.Username
 			}
-			fmt.Fprintf(w, "%s\t%d\t%s\t%s\t%d\t%s\n", mark, chat.ID, chat.Kind, username, chat.UnreadCount, chat.Title)
+			// The owner picks IDs from this table: a title must not fake a row or control the terminal.
+			title := strings.Join(strings.Fields(textsafe.Clean(chat.Title, maxTitleRunes)), " ")
+			fmt.Fprintf(w, "%s\t%d\t%s\t%s\t%d\t%s\n", mark, chat.ID, chat.Kind, username, chat.UnreadCount, title)
 		}
 		if err := w.Flush(); err != nil {
 			return err
