@@ -214,11 +214,23 @@ func Test_XlsxText_Limits(t *testing.T) {
 	require.Contains(t, got, "[sheet truncated")
 }
 
+func Test_XlsxText_MergesOutsideLimits(t *testing.T) {
+	t.Parallel()
+
+	sheet := `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>` +
+		`<row r="1"><c r="A1" t="inlineStr"><is><t>Mon</t></is></c></row>` +
+		`</sheetData><mergeCells>` +
+		strings.Repeat(`<mergeCell ref="CW1:CW2000"/>`, maxMergeRanges) +
+		`<mergeCell ref="A1:A2"/></mergeCells></worksheet>`
+
+	got, err := XlsxText(xlsx(t, sheet, nil))
+	require.NoError(t, err)
+	require.Equal(t, "## Sheet: Fall\n1 | Mon |\n2 | Mon |\n\n## Sheet: Empty", got)
+}
+
 func Test_XlsxText_OutputLimit(t *testing.T) {
 	t.Parallel()
 
-	// Every cell references one large shared string: a tiny file must not expand
-	// into hundreds of megabytes of text.
 	var cells strings.Builder
 	for row := 1; row <= 20; row++ {
 		fmt.Fprintf(&cells, `<row r="%d">`, row)

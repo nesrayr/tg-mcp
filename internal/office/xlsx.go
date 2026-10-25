@@ -1,7 +1,6 @@
 package office
 
 import (
-	"bytes"
 	"encoding/xml"
 	"fmt"
 	"math"
@@ -22,7 +21,16 @@ const (
 	// shared string, so a few kilobytes of XML would otherwise expand into gigabytes.
 	maxOutputBytes      = 1 << 20
 	outputTruncatedMark = "[output truncated]"
+	// The limits below bound memory: every listed element stays in memory until the
+	// sheet is rendered, and XML lets millions of them fit into a small file.
+	maxSheets        = 1000
+	maxSharedStrings = 1_000_000
+	maxCellStyles    = 65_536
+	maxSheetCells    = maxSheetRows * maxSheetCols
+	maxMergeRanges   = 10_000
 )
+
+const relationshipsNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 // XlsxText returns the contents of an Excel workbook: for each sheet, a header and rows
 // like "5 | cell | cell |" (row number as in Excel). Merged cells
@@ -56,7 +64,7 @@ func XlsxText(data []byte) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		grid, err := parseSheet(raw, shared, styles)
+		grid, err := parseSheet(raw, sheet.path, shared, styles)
 		if err != nil {
 			return "", fmt.Errorf("sheet %q: %w", sheet.name, err)
 		}
@@ -107,46 +115,61 @@ type sheetRef struct {
 	path string
 }
 
+type workbookSheet struct {
+	name string
+	rid  string
+}
+
 func readSheetList(arc *archive) ([]sheetRef, error) {
 	workbook, err := arc.mustRead("xl/workbook.xml")
 	if err != nil {
 		return nil, err
 	}
-	var wb struct {
-		Sheets []struct {
-			Name string `xml:"name,attr"`
-			RID  string `xml:"http://schemas.openxmlformats.org/officeDocument/2006/relationships id,attr"`
-		} `xml:"sheets>sheet"`
-	}
-	if err := xml.Unmarshal(workbook, &wb); err != nil {
-		return nil, fmt.Errorf("%w: workbook.xml: %v", ErrInvalidDocument, err)
+	var listed []workbookSheet
+	err = walk(workbook, "xl/workbook.xml", func(d *xml.Decoder, start xml.StartElement, parent string) (bool, error) {
+		if parent != "sheets" || start.Name.Local != "sheet" {
+			return false, nil
+		}
+		if len(listed) < maxSheets {
+			listed = append(listed, workbookSheet{
+				name: attr(start, "", "name"),
+				rid:  attr(start, relationshipsNS, "id"),
+			})
+		}
+		return true, d.Skip()
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	rels, err := arc.mustRead("xl/_rels/workbook.xml.rels")
 	if err != nil {
 		return nil, err
 	}
-	var relationships struct {
-		Items []struct {
-			ID     string `xml:"Id,attr"`
-			Target string `xml:"Target,attr"`
-		} `xml:"Relationship"`
-	}
-	if err := xml.Unmarshal(rels, &relationships); err != nil {
-		return nil, fmt.Errorf("%w: workbook.xml.rels: %v", ErrInvalidDocument, err)
-	}
-	targets := make(map[string]string, len(relationships.Items))
-	for _, rel := range relationships.Items {
-		targets[rel.ID] = rel.Target
+	targets := make(map[string]string)
+	err = walk(rels, "xl/_rels/workbook.xml.rels", func(d *xml.Decoder, start xml.StartElement, parent string) (bool, error) {
+		if parent != "Relationships" || start.Name.Local != "Relationship" {
+			return false, nil
+		}
+		if len(targets) < maxEntries {
+			targets[attr(start, "", "Id")] = attr(start, "", "Target")
+		}
+		return true, d.Skip()
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	sheets := make([]sheetRef, 0, len(wb.Sheets))
-	for _, sheet := range wb.Sheets {
-		target, ok := targets[sheet.RID]
+	sheets := make([]sheetRef, 0, len(listed))
+	for _, sheet := range listed {
+		target, ok := targets[sheet.rid]
 		if !ok {
 			continue
 		}
-		sheets = append(sheets, sheetRef{name: sheet.Name, path: resolveTarget("xl", target)})
+		sheets = append(sheets, sheetRef{
+			name: sheet.name,
+			path: resolveTarget("xl", target),
+		})
 	}
 	return sheets, nil
 }
@@ -156,38 +179,22 @@ func readSharedStrings(arc *archive) ([]string, error) {
 	if err != nil || data == nil {
 		return nil, err
 	}
-	var sst struct {
-		Items []richText `xml:"si"`
-	}
-	if err := xml.Unmarshal(data, &sst); err != nil {
-		return nil, fmt.Errorf("%w: sharedStrings.xml: %v", ErrInvalidDocument, err)
-	}
-	strs := make([]string, len(sst.Items))
-	for i, item := range sst.Items {
-		strs[i] = item.String()
+	var strs []string
+	err = walk(data, "xl/sharedStrings.xml", func(d *xml.Decoder, start xml.StartElement, parent string) (bool, error) {
+		if parent != "sst" || start.Name.Local != "si" {
+			return false, nil
+		}
+		if len(strs) == maxSharedStrings {
+			return true, fmt.Errorf("%w: more than %d shared strings", ErrTooLarge, maxSharedStrings)
+		}
+		text, readErr := readRichText(d)
+		strs = append(strs, text)
+		return true, readErr
+	})
+	if err != nil {
+		return nil, err
 	}
 	return strs, nil
-}
-
-// richText is an Excel string: either a plain <t> or a set of <r><t> runs.
-// Phonetic hints (<rPh>) are not included.
-type richText struct {
-	Text string `xml:"t"`
-	Runs []struct {
-		Text string `xml:"t"`
-	} `xml:"r"`
-}
-
-func (r richText) String() string {
-	if len(r.Runs) == 0 {
-		return r.Text
-	}
-	var b strings.Builder
-	b.WriteString(r.Text)
-	for _, run := range r.Runs {
-		b.WriteString(run.Text)
-	}
-	return b.String()
 }
 
 type dateKind int
@@ -205,26 +212,32 @@ func readDateStyles(arc *archive) ([]dateKind, error) {
 	if err != nil || data == nil {
 		return nil, err
 	}
-	var ss struct {
-		NumFmts []struct {
-			ID   int    `xml:"numFmtId,attr"`
-			Code string `xml:"formatCode,attr"`
-		} `xml:"numFmts>numFmt"`
-		CellXfs []struct {
-			NumFmtID int `xml:"numFmtId,attr"`
-		} `xml:"cellXfs>xf"`
-	}
-	if err := xml.Unmarshal(data, &ss); err != nil {
-		return nil, fmt.Errorf("%w: styles.xml: %v", ErrInvalidDocument, err)
+	custom := make(map[int]string)
+	var formats []int
+	err = walk(data, "xl/styles.xml", func(d *xml.Decoder, start xml.StartElement, parent string) (bool, error) {
+		switch {
+		case parent == "numFmts" && start.Name.Local == "numFmt":
+			id, convErr := strconv.Atoi(attr(start, "", "numFmtId"))
+			if convErr == nil && len(custom) < maxCellStyles {
+				custom[id] = attr(start, "", "formatCode")
+			}
+		case parent == "cellXfs" && start.Name.Local == "xf":
+			if len(formats) < maxCellStyles {
+				id, _ := strconv.Atoi(attr(start, "", "numFmtId"))
+				formats = append(formats, id)
+			}
+		default:
+			return false, nil
+		}
+		return true, d.Skip()
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	custom := make(map[int]string, len(ss.NumFmts))
-	for _, f := range ss.NumFmts {
-		custom[f.ID] = f.Code
-	}
-	kinds := make([]dateKind, len(ss.CellXfs))
-	for i, xf := range ss.CellXfs {
-		kinds[i] = numFmtKind(xf.NumFmtID, custom)
+	kinds := make([]dateKind, len(formats))
+	for i, id := range formats {
+		kinds[i] = numFmtKind(id, custom)
 	}
 	return kinds, nil
 }
@@ -321,56 +334,104 @@ type grid struct {
 	capped bool
 }
 
-func parseSheet(data []byte, shared []string, styles []dateKind) (*grid, error) {
-	var ws struct {
-		Rows []struct {
-			Cells []struct {
-				Ref    string   `xml:"r,attr"`
-				Type   string   `xml:"t,attr"`
-				Style  int      `xml:"s,attr"`
-				Value  string   `xml:"v"`
-				Inline richText `xml:"is"`
-			} `xml:"c"`
-		} `xml:"sheetData>row"`
-		Merges []struct {
-			Ref string `xml:"ref,attr"`
-		} `xml:"mergeCells>mergeCell"`
-	}
-	if err := xml.NewDecoder(bytes.NewReader(data)).Decode(&ws); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidDocument, err)
-	}
+type rawCell struct {
+	typ    string
+	style  int
+	value  string
+	inline string
+}
 
-	g := &grid{cells: make(map[cellPos]string), merges: make(map[cellPos]int)}
-	for _, row := range ws.Rows {
-		for _, c := range row.Cells {
-			pos, ok := parseRef(c.Ref)
-			if !ok {
-				continue
-			}
-			if pos.row > maxSheetRows || pos.col > maxSheetCols {
+func parseSheet(data []byte, part string, shared []string, styles []dateKind) (*grid, error) {
+	g := &grid{
+		cells:  make(map[cellPos]string),
+		merges: make(map[cellPos]int),
+	}
+	var ranges []mergeRange
+	decoded := 0
+	err := walk(data, part, func(d *xml.Decoder, start xml.StartElement, parent string) (bool, error) {
+		switch {
+		case parent == "sheetData" && start.Name.Local == "row":
+			row, err := strconv.Atoi(attr(start, "", "r"))
+			if err == nil && row > maxSheetRows {
 				g.capped = true
-				continue
+				return true, d.Skip()
 			}
-			value := cellValue(c.Type, c.Value, c.Inline, c.Style, shared, styles)
-			if value == "" {
-				continue
+			return false, nil
+		case parent == "row" && start.Name.Local == "c":
+			pos, ok := parseRef(attr(start, "", "r"))
+			if !ok {
+				return true, d.Skip()
 			}
-			g.set(pos, value)
+			if pos.row > maxSheetRows || pos.col > maxSheetCols || decoded == maxSheetCells {
+				g.capped = true
+				return true, d.Skip()
+			}
+			decoded++
+			c, err := readCell(d, start)
+			if err != nil {
+				return true, err
+			}
+			if value := cellValue(c, shared, styles); value != "" {
+				g.set(pos, value)
+			}
+			return true, nil
+		case parent == "mergeCells" && start.Name.Local == "mergeCell":
+			r, ok := parseRange(attr(start, "", "ref"))
+			switch {
+			case !ok, r.top > maxSheetRows, r.left > maxSheetCols:
+			case len(ranges) == maxMergeRanges:
+				g.capped = true
+			default:
+				ranges = append(ranges, r)
+			}
+			return true, d.Skip()
+		default:
+			return false, nil
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	g.applyMerges(ranges)
+	return g, nil
+}
+
+func readCell(d *xml.Decoder, start xml.StartElement) (rawCell, error) {
+	c := rawCell{typ: attr(start, "", "t")}
+	c.style, _ = strconv.Atoi(attr(start, "", "s"))
+	for {
+		token, err := d.Token()
+		if err != nil {
+			return c, err
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "v":
+				c.value, err = readValue(d)
+			case "is":
+				c.inline, err = readRichText(d)
+			default:
+				err = d.Skip()
+			}
+		case xml.EndElement:
+			return c, nil
+		}
+		if err != nil {
+			return c, err
 		}
 	}
+}
 
+func (g *grid) applyMerges(ranges []mergeRange) {
 	budget := maxMergedCells
-	for i, m := range ws.Merges {
-		r, ok := parseRange(m.Ref)
-		if !ok {
-			continue
-		}
+	for i, r := range ranges {
 		value := g.cells[cellPos{r.top, r.left}]
 		for row := r.top; row <= min(r.bottom, maxSheetRows); row++ {
 			for col := r.left; col <= min(r.right, maxSheetCols); col++ {
 				if budget == 0 {
 					g.capped = true
-					return g, nil
+					return
 				}
 				budget--
 				g.merges[cellPos{row, col}] = i
@@ -380,7 +441,6 @@ func parseSheet(data []byte, shared []string, styles []dateKind) (*grid, error) 
 			}
 		}
 	}
-	return g, nil
 }
 
 func (g *grid) set(pos cellPos, value string) {
@@ -389,8 +449,9 @@ func (g *grid) set(pos cellPos, value string) {
 	g.maxCol = max(g.maxCol, pos.col)
 }
 
-func cellValue(typ, raw string, inline richText, style int, shared []string, styles []dateKind) string {
-	switch typ {
+func cellValue(c rawCell, shared []string, styles []dateKind) string {
+	raw, style := c.value, c.style
+	switch c.typ {
 	case "s":
 		index, err := strconv.Atoi(raw)
 		if err != nil || index < 0 || index >= len(shared) {
@@ -398,7 +459,7 @@ func cellValue(typ, raw string, inline richText, style int, shared []string, sty
 		}
 		return strings.TrimSpace(shared[index])
 	case "inlineStr":
-		return strings.TrimSpace(inline.String())
+		return strings.TrimSpace(c.inline)
 	case "str", "e":
 		return strings.TrimSpace(raw)
 	case "b":

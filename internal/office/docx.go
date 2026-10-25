@@ -1,10 +1,8 @@
 package office
 
 import (
-	"bytes"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 )
@@ -36,7 +34,10 @@ type docxParser struct {
 }
 
 func parseDocument(document []byte) (string, error) {
-	decoder := xml.NewDecoder(bytes.NewReader(document))
+	decoder, err := newDecoder(document)
+	if err != nil {
+		return "", partError("word/document.xml", err)
+	}
 	p := &docxParser{}
 
 	for {
@@ -45,7 +46,7 @@ func parseDocument(document []byte) (string, error) {
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("%w: document.xml: %v", ErrInvalidDocument, err)
+			return "", partError("word/document.xml", err)
 		}
 
 		switch t := token.(type) {
@@ -93,11 +94,14 @@ func (p *docxParser) end(name string) {
 	case "p":
 		p.flushParagraph()
 	case "tc":
-		if len(p.cell) == 0 || len(p.cells) == 0 {
+		if len(p.cell) == 0 {
 			return
 		}
 		text := strings.TrimSpace(p.cell[len(p.cell)-1].String())
 		p.cell = p.cell[:len(p.cell)-1]
+		if len(p.cells) == 0 {
+			return
+		}
 		row := len(p.cells) - 1
 		p.cells[row] = append(p.cells[row], text)
 	case "tr":

@@ -10,6 +10,7 @@ install:
 
 test:
 	go test -race ./...
+	go test -run Test_MemoryBound ./internal/office/
 
 lint:
 	go vet ./...

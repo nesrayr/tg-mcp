@@ -1,8 +1,8 @@
 // Package office extracts text from Office Open XML documents (DOCX, XLSX).
 //
 // Files from chats are untrusted: macros and external links are ignored, XML is parsed
-// with the standard library (it does not load external entities), and the decompressed size
-// is limited so that a zip bomb cannot exhaust memory.
+// with the standard library (it does not load external entities), and the decompressed size,
+// XML nesting, tag size and element counts are limited so that a small file cannot exhaust memory.
 package office
 
 import (
@@ -62,22 +62,22 @@ func (a *archive) read(name string) ([]byte, error) {
 	}
 	limit := min(a.limit, a.remaining)
 	if file.UncompressedSize64 > uint64(limit) {
-		return nil, fmt.Errorf("%w: %s", ErrTooLarge, name)
+		return nil, fmt.Errorf("%w: %q", ErrTooLarge, name)
 	}
 
 	rc, err := file.Open()
 	if err != nil {
-		return nil, fmt.Errorf("%w: open %s: %v", ErrInvalidDocument, name, err)
+		return nil, fmt.Errorf("%w: open %q: %v", ErrInvalidDocument, name, err)
 	}
 	defer rc.Close()
 
 	// The zip header can be forged, so the limit is also checked while reading.
 	data, err := io.ReadAll(io.LimitReader(rc, limit+1))
 	if err != nil {
-		return nil, fmt.Errorf("%w: read %s: %v", ErrInvalidDocument, name, err)
+		return nil, fmt.Errorf("%w: read %q: %v", ErrInvalidDocument, name, err)
 	}
 	if int64(len(data)) > limit {
-		return nil, fmt.Errorf("%w: %s", ErrTooLarge, name)
+		return nil, fmt.Errorf("%w: %q", ErrTooLarge, name)
 	}
 	a.remaining -= int64(len(data))
 	return data, nil
@@ -89,7 +89,7 @@ func (a *archive) mustRead(name string) ([]byte, error) {
 		return nil, err
 	}
 	if data == nil {
-		return nil, fmt.Errorf("%w: missing %s", ErrInvalidDocument, name)
+		return nil, fmt.Errorf("%w: missing %q", ErrInvalidDocument, name)
 	}
 	return data, nil
 }
