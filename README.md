@@ -3,6 +3,10 @@
 An MCP server that gives an AI agent (Claude Code and other MCP clients) **read-only access**
 to selected chats of your personal Telegram account: messages, search, photos, PDF, DOCX and XLSX.
 
+tg-mcp is an unofficial client of the Telegram API, not affiliated with Telegram. It works under your account
+and your own `api_id`, so you are responsible for following the
+[Telegram API Terms of Service](https://core.telegram.org/api/terms) and for what happens to your account.
+
 ## Security model
 
 | Threat | Mitigation |
