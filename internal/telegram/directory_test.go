@@ -118,6 +118,49 @@ func Test_Directory_Allowed(t *testing.T) {
 		require.Empty(t, allowed)
 	})
 
+	t.Run("pinned username is followed only to its chat", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			pin  int64
+			want int
+		}{
+			{
+				name: "same chat",
+				pin:  newsChatID,
+				want: 1,
+			},
+			{
+				name: "username taken by another chat",
+				pin:  newsChatID - 1,
+				want: 0,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				mock, api := newMock(t)
+				mock.ExpectCall(&tg.ContactsResolveUsernameRequest{Username: "gonews"}).ThenResult(&tg.ContactsResolvedPeer{
+					Peer:  &tg.PeerChannel{ChannelID: newsChanID},
+					Chats: []tg.ChatClass{newsChannel()},
+				})
+				refs := []domain.ChatRef{
+					{
+						ID:       tt.pin,
+						Username: "gonews",
+					},
+				}
+
+				allowed, err := NewDirectory(api, refs, discardLogs).Allowed(ctx)
+				require.NoError(t, err)
+				require.Len(t, allowed, tt.want)
+			})
+		}
+	})
+
 	t.Run("network error is not cached", func(t *testing.T) {
 		t.Parallel()
 
@@ -187,4 +230,46 @@ func Test_Directory_Resolve(t *testing.T) {
 			require.Equal(t, tt.want, got.chat.ID)
 		})
 	}
+}
+
+func Test_PinUsernames(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("pins unpinned usernames only", func(t *testing.T) {
+		t.Parallel()
+
+		mock, api := newMock(t)
+		mock.ExpectCall(&tg.ContactsResolveUsernameRequest{Username: "gonews"}).ThenResult(&tg.ContactsResolvedPeer{
+			Peer:  &tg.PeerChannel{ChannelID: newsChanID},
+			Chats: []tg.ChatClass{newsChannel()},
+		})
+		pinned := domain.ChatRef{
+			ID:       momChatID,
+			Username: "mama_tg",
+		}
+
+		got, err := PinUsernames(ctx, api, []domain.ChatRef{{ID: 42}, {Username: "gonews"}, pinned})
+		require.NoError(t, err)
+		require.Equal(t, []domain.ChatRef{
+			{ID: 42},
+			{
+				ID:       newsChatID,
+				Username: "gonews",
+			},
+			pinned,
+		}, got)
+	})
+
+	t.Run("unknown username", func(t *testing.T) {
+		t.Parallel()
+
+		mock, api := newMock(t)
+		mock.ExpectCall(&tg.ContactsResolveUsernameRequest{Username: "nobody_here"}).
+			ThenRPCErr(tgerr.New(400, "USERNAME_NOT_OCCUPIED"))
+
+		_, err := PinUsernames(ctx, api, []domain.ChatRef{{Username: "nobody_here"}})
+		require.ErrorIs(t, err, ErrUsernameNotFound)
+	})
 }

@@ -14,8 +14,12 @@ import (
 	"github.com/nesrayr/tg-mcp/internal/domain"
 )
 
-// ErrChatUnavailable does not tell a missing chat from one outside allowed_chats, so the allowlist leaks nothing.
-var ErrChatUnavailable = errors.New("chat not found or not in allowed_chats")
+var (
+	// ErrChatUnavailable does not tell a missing chat from one outside allowed_chats, so the allowlist leaks nothing.
+	ErrChatUnavailable = errors.New("chat not found or not in allowed_chats")
+	// ErrUsernameNotFound means no chat has the username now.
+	ErrUsernameNotFound = errors.New("username not found")
+)
 
 const (
 	dialogsBatchSize = 100
@@ -77,19 +81,33 @@ func (d *Directory) Resolve(ctx context.Context, ref domain.ChatRef) (resolvedCh
 func (d *Directory) resolve(ctx context.Context) ([]resolvedChat, error) {
 	found := make(map[domain.ChatRef]resolvedChat, len(d.refs))
 	pendingIDs := make(map[int64]domain.ChatRef)
+	unpinned := 0
 
 	for _, ref := range d.refs {
 		if ref.Username == "" {
 			pendingIDs[ref.ID] = ref
 			continue
 		}
-		chat, ok, err := d.resolveUsername(ctx, ref.Username)
+		chat, ok, err := resolveUsername(ctx, d.api, ref.Username)
 		if err != nil {
 			return nil, err
 		}
-		if ok {
+		switch {
+		case !ok:
+		case ref.Pinned() && chat.chat.ID != ref.ID:
+			// A released username can be taken by someone else: never follow it to another chat.
+			d.logger.Warn("allowed username now points to another chat, skipped; run `tg-mcp allow` again to trust it",
+				"ref", ref.String(), "chat_id", chat.chat.ID)
+		default:
 			found[ref] = chat
 		}
+		if !ref.Pinned() {
+			unpinned++
+		}
+	}
+	if unpinned > 0 {
+		d.logger.Warn("allowed usernames are not pinned to a chat ID; run `tg-mcp allow @username` again to pin them",
+			"count", unpinned)
 	}
 
 	// A chat may be given both by username and by ID: no need to look it up twice.
@@ -127,8 +145,31 @@ func (d *Directory) resolve(ctx context.Context) ([]resolvedChat, error) {
 	return result, nil
 }
 
-func (d *Directory) resolveUsername(ctx context.Context, username string) (resolvedChat, bool, error) {
-	resolved, err := d.api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: username})
+// PinUsernames pins every unpinned @username reference to the ID of the chat it points to now.
+func PinUsernames(ctx context.Context, api *tg.Client, refs []domain.ChatRef) ([]domain.ChatRef, error) {
+	pinned := make([]domain.ChatRef, 0, len(refs))
+	for _, ref := range refs {
+		if ref.Username == "" || ref.Pinned() {
+			pinned = append(pinned, ref)
+			continue
+		}
+		chat, ok, err := resolveUsername(ctx, api, ref.Username)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("%w: @%s", ErrUsernameNotFound, ref.Username)
+		}
+		pinned = append(pinned, domain.ChatRef{
+			ID:       chat.chat.ID,
+			Username: ref.Username,
+		})
+	}
+	return pinned, nil
+}
+
+func resolveUsername(ctx context.Context, api *tg.Client, username string) (resolvedChat, bool, error) {
+	resolved, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: username})
 	if tgerr.Is(err, "USERNAME_NOT_OCCUPIED", "USERNAME_INVALID") {
 		return resolvedChat{}, false, nil
 	}

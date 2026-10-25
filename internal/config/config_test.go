@@ -212,12 +212,59 @@ func Test_Config_Validate(t *testing.T) {
 func Test_Config_Allow(t *testing.T) {
 	t.Parallel()
 
-	cfg := Config{AllowedChats: []string{"@Durov", "42"}}
+	pinned := domain.ChatRef{
+		ID:       -1001,
+		Username: "durov",
+	}
 
-	added, err := cfg.Allow(domain.ChatRef{Username: "durov"}, domain.ChatRef{ID: -1001}, domain.ChatRef{ID: -1001})
-	require.NoError(t, err)
-	require.Equal(t, 1, added)
-	require.Equal(t, []string{"@Durov", "42", "-1001"}, cfg.AllowedChats)
+	tests := []struct {
+		name        string
+		allowed     []string
+		allow       []domain.ChatRef
+		wantChanged int
+		want        []string
+	}{
+		{
+			name:        "skips present refs",
+			allowed:     []string{"@Durov", "42"},
+			allow:       []domain.ChatRef{{Username: "durov"}, {ID: -1001}, {ID: -1001}},
+			wantChanged: 1,
+			want:        []string{"@Durov", "42", "-1001"},
+		},
+		{
+			name:        "pins an unpinned username in place",
+			allowed:     []string{"@Durov", "42"},
+			allow:       []domain.ChatRef{pinned},
+			wantChanged: 1,
+			want:        []string{"@durov:-1001", "42"},
+		},
+		{
+			name:        "repins a username to its new chat",
+			allowed:     []string{"@durov:-1002"},
+			allow:       []domain.ChatRef{pinned},
+			wantChanged: 1,
+			want:        []string{"@durov:-1001"},
+		},
+		{
+			name:    "unpinned ref does not drop a pin",
+			allowed: []string{"@durov:-1001"},
+			allow:   []domain.ChatRef{{Username: "durov"}},
+			want:    []string{"@durov:-1001"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{AllowedChats: tt.allowed}
+
+			changed, err := cfg.Allow(tt.allow...)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantChanged, changed)
+			require.Equal(t, tt.want, cfg.AllowedChats)
+		})
+	}
 }
 
 func Test_Config_Deny(t *testing.T) {
@@ -235,6 +282,20 @@ func Test_Config_Deny(t *testing.T) {
 			allowed:     []string{"@Durov", "42", "-1001"},
 			deny:        []domain.ChatRef{{Username: "durov"}, {ID: -1001}},
 			wantRemoved: 2,
+			want:        []string{"42"},
+		},
+		{
+			name:        "username removes its pinned entry",
+			allowed:     []string{"@durov:-1001", "42"},
+			deny:        []domain.ChatRef{{Username: "durov"}},
+			wantRemoved: 1,
+			want:        []string{"42"},
+		},
+		{
+			name:        "id removes a username pinned to it",
+			allowed:     []string{"@durov:-1001", "42"},
+			deny:        []domain.ChatRef{{ID: -1001}},
+			wantRemoved: 1,
 			want:        []string{"42"},
 		},
 		{

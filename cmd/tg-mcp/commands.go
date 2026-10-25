@@ -168,10 +168,14 @@ func runChats(ctx context.Context, args []string) error {
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "\tID\tTYPE\tUSERNAME\tUNREAD\tTITLE")
+		unpinned := false
 		for _, chat := range chats {
 			mark := ""
-			if slices.ContainsFunc(refs, func(ref domain.ChatRef) bool { return ref.Matches(chat) }) {
+			if i := slices.IndexFunc(refs, func(ref domain.ChatRef) bool { return ref.Matches(chat) }); i >= 0 {
 				mark = "✓"
+				if refs[i].Username != "" && !refs[i].Pinned() {
+					mark, unpinned = "✓*", true
+				}
 			}
 			username := ""
 			if chat.Username != "" {
@@ -185,28 +189,53 @@ func runChats(ctx context.Context, args []string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "\n✓ = already allowed. To allow: tg-mcp allow <ID or @username>\n")
+		if unpinned {
+			fmt.Fprintln(os.Stderr, "* allowed by username only: run tg-mcp allow @username again to pin it to this chat.")
+		}
 		return nil
 	})
 }
 
-func runAllow(_ context.Context, args []string) error {
+func runAllow(ctx context.Context, args []string) error {
 	// Only a human at the terminal can extend access: this way an agent that was
 	// talked into it by a chat message cannot open new chats for itself.
 	if !login.IsTerminal(os.Stdin) || !login.IsTerminal(os.Stdout) {
 		return login.ErrNotTerminal
 	}
-	return editAllowlist(args, func(cfg *config.Config, refs []domain.ChatRef) (int, error) {
-		return cfg.Allow(refs...)
-	}, "added")
+	return editAllowlist(args, func(paths config.Paths, cfg *config.Config, refs []domain.ChatRef) (int, error) {
+		pinned, err := pinUsernames(ctx, paths, *cfg, refs)
+		if err != nil {
+			return 0, err
+		}
+		return cfg.Allow(pinned...)
+	}, "allowed")
 }
 
 func runDeny(_ context.Context, args []string) error {
-	return editAllowlist(args, func(cfg *config.Config, refs []domain.ChatRef) (int, error) {
+	return editAllowlist(args, func(_ config.Paths, cfg *config.Config, refs []domain.ChatRef) (int, error) {
 		return cfg.Deny(refs...)
 	}, "removed")
 }
 
-func editAllowlist(args []string, edit func(*config.Config, []domain.ChatRef) (int, error), verb string) error {
+func pinUsernames(ctx context.Context, paths config.Paths, cfg config.Config, refs []domain.ChatRef) ([]domain.ChatRef, error) {
+	// A username can later pass to another account, so the chat it points to now is pinned by ID.
+	needed := slices.ContainsFunc(refs, func(ref domain.ChatRef) bool {
+		return ref.Username != "" && !ref.Pinned()
+	})
+	if !needed {
+		return refs, nil
+	}
+
+	var pinned []domain.ChatRef
+	err := withSession(ctx, paths, cfg, func(ctx context.Context, client *gotd.Client) error {
+		var err error
+		pinned, err = telegram.PinUsernames(ctx, client.API(), refs)
+		return err
+	})
+	return pinned, err
+}
+
+func editAllowlist(args []string, edit func(config.Paths, *config.Config, []domain.ChatRef) (int, error), verb string) error {
 	if len(args) == 0 {
 		return errors.New("specify at least one chat: ID or @username")
 	}
@@ -223,7 +252,7 @@ func editAllowlist(args []string, edit func(*config.Config, []domain.ChatRef) (i
 	if err != nil {
 		return err
 	}
-	changed, err := edit(&cfg, refs)
+	changed, err := edit(paths, &cfg, refs)
 	if err != nil {
 		return err
 	}

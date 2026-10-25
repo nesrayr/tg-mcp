@@ -41,6 +41,24 @@ func Test_ParseChatRef(t *testing.T) {
 			want: ChatRef{Username: "durov"},
 		},
 		{
+			name: "username pinned to id",
+			raw:  "@GoNews:-1001234567890",
+			want: ChatRef{
+				ID:       -1001234567890,
+				Username: "gonews",
+			},
+		},
+		{
+			name:    "pinned to zero id",
+			raw:     "@gonews:0",
+			wantErr: true,
+		},
+		{
+			name:    "pinned to non-numeric id",
+			raw:     "@gonews:abc",
+			wantErr: true,
+		},
+		{
 			name:    "zero id",
 			raw:     "0",
 			wantErr: true,
@@ -120,6 +138,22 @@ func Test_ChatRef_Matches(t *testing.T) {
 			ref:  ChatRef{Username: "gonewsx"},
 			want: false,
 		},
+		{
+			name: "pinned username of the same chat",
+			ref: ChatRef{
+				ID:       -1001234567890,
+				Username: "gonews",
+			},
+			want: true,
+		},
+		{
+			name: "pinned username now on another chat",
+			ref: ChatRef{
+				ID:       -1009999999999,
+				Username: "gonews",
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -136,4 +170,8 @@ func Test_ChatRef_String(t *testing.T) {
 
 	require.Equal(t, "@durov", ChatRef{Username: "durov"}.String())
 	require.Equal(t, "-1001", ChatRef{ID: -1001}.String())
+	require.Equal(t, "@durov:-1001", ChatRef{
+		ID:       -1001,
+		Username: "durov",
+	}.String())
 }

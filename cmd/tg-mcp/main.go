@@ -19,7 +19,7 @@ Usage:
   tg-mcp setup              save api_id and api_hash
   tg-mcp login [--code]     log in: QR code (default) or code from Telegram
   tg-mcp chats [--limit N]  show chats with IDs to choose which ones to allow
-  tg-mcp allow <chat>...    allow chats: ID or @username
+  tg-mcp allow <chat>...    allow chats: ID or @username (pinned to the chat ID it has now)
   tg-mcp deny <chat>...     deny chats
   tg-mcp serve              run the MCP server on stdio
 

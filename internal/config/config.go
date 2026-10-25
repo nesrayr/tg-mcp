@@ -145,23 +145,35 @@ func (c Config) ChatRefs() ([]domain.ChatRef, error) {
 	return refs, nil
 }
 
-// Allow adds chats to the allowlist, skipping those already present. Returns the number of new ones.
+// Allow adds chats to the allowlist and returns the number of changed entries.
 func (c *Config) Allow(refs ...domain.ChatRef) (int, error) {
 	current, err := c.ChatRefs()
 	if err != nil {
 		return 0, err
 	}
 
-	added := 0
+	changed := 0
 	for _, ref := range refs {
 		if slices.Contains(current, ref) {
 			continue
 		}
-		current = append(current, ref)
-		c.AllowedChats = append(c.AllowedChats, ref.String())
-		added++
+		same := slices.IndexFunc(current, func(entry domain.ChatRef) bool {
+			return ref.Username != "" && entry.Username == ref.Username
+		})
+		switch {
+		case same < 0:
+			current = append(current, ref)
+			c.AllowedChats = append(c.AllowedChats, ref.String())
+		case ref.Pinned():
+			// Allowing a username again pins it to the chat it points to now.
+			current[same] = ref
+			c.AllowedChats[same] = ref.String()
+		default:
+			continue
+		}
+		changed++
 	}
-	return added, nil
+	return changed, nil
 }
 
 // Deny removes chats from the allowlist. Returns the number of removed ones.
@@ -172,8 +184,11 @@ func (c *Config) Deny(refs ...domain.ChatRef) (int, error) {
 	}
 
 	kept := make([]string, 0, len(current))
-	for i, ref := range current {
-		if !slices.Contains(refs, ref) {
+	for i, entry := range current {
+		denied := slices.ContainsFunc(refs, func(ref domain.ChatRef) bool {
+			return ref.Username != "" && ref.Username == entry.Username || ref.ID != 0 && ref.ID == entry.ID
+		})
+		if !denied {
 			kept = append(kept, c.AllowedChats[i])
 		}
 	}

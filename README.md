@@ -10,6 +10,7 @@ to selected chats of your personal Telegram account: messages, search, photos, P
 | The agent sends, deletes or forwards a message | There are no such calls in the code, and the `Guard` middleware rejects any RPC method outside an allowlist of 10 read methods before it reaches the network |
 | The agent "reads" messages on your behalf | `messages.readHistory` and similar methods are blocked: unread stays unread, the "online" status does not change |
 | Access to all conversations | Only chats in `allowed_chats` are visible. The rest are indistinguishable from nonexistent ones; search runs over each allowed chat separately, never globally |
+| An allowed @username passes to someone else | `tg-mcp allow @username` pins the ID of the chat the username points to at that moment; if the username later points to another chat, the server skips it and logs a warning |
 | The agent extends its own access through MCP | No MCP tool changes the allowlist. `tg-mcp allow` and `tg-mcp chats` refuse to run without an interactive terminal, which stops attempts from a pipe but not an agent with an unrestricted shell (see [Agents with shell access](#agents-with-shell-access)) |
 | Prompt injection in messages | Every response is marked as untrusted data. Control and invisible characters (bidi overrides, zero-width characters, Unicode tags, variation selectors) are stripped from the text and from error messages. Length is limited |
 | Session leak | Config and session live in `~/.config/tg-mcp/` (directory 0700, files 0600); the server refuses to start with looser permissions |
@@ -88,6 +89,11 @@ Run all commands below **in a separate terminal tab**, not through the agent.
    tg-mcp allow @username -1001234567  # allow
    tg-mcp deny -1001234567             # deny
    ```
+
+   `allow @username` looks the username up right away (so it needs a login) and stores it with the chat ID,
+   like `@gonews:-1001234567890`. If the username later passes to another chat, the server skips the entry;
+   run `tg-mcp allow @username` again to trust the new chat. Entries without an ID, added by older
+   versions, still work and are marked `✓*` in `tg-mcp chats`: allow them again to pin them.
 
    After changing the list, restart the MCP server (in Claude Code: `/mcp` → reconnect, or restart it).
 
